@@ -3,6 +3,7 @@ package android.midi
 import android.content.Context
 import android.media.midi.MidiDevice
 import android.media.midi.MidiManager
+import android.media.midi.MidiOutputPort
 import android.media.midi.MidiReceiver
 import core.midi.*
 import core.time.Transport
@@ -14,6 +15,7 @@ class AndroidMidiInputReal(
 
     private var listener: ((MidiEvent) -> Unit)? = null
     private var device: MidiDevice? = null
+    private var outputPort: MidiOutputPort? = null
 
     override fun setListener(listener: (MidiEvent) -> Unit) {
         this.listener = listener
@@ -27,12 +29,14 @@ class AndroidMidiInputReal(
 
         val info = devices.first()
 
-        midiManager.openDevice(info, { openedDevice ->
-            device = openedDevice
+        midiManager.openDevice(info, openDeviceCallback@{ openedDevice ->
+            val opened = openedDevice ?: return@openDeviceCallback
+            device = opened
 
-            val inputPort = openedDevice.openInputPort(0)
+            val port = opened.openOutputPort(0) ?: return@openDeviceCallback
+            outputPort = port
 
-            inputPort.connect(object : MidiReceiver() {
+            port.connect(object : MidiReceiver() {
                 override fun onSend(data: ByteArray, offset: Int, count: Int, timestamp: Long) {
                     parseMidi(data, offset, count)
                 }
@@ -41,6 +45,8 @@ class AndroidMidiInputReal(
     }
 
     override fun stop() {
+        outputPort?.close()
+        outputPort = null
         device?.close()
         device = null
     }

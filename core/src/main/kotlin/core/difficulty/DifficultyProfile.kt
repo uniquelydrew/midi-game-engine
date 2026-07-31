@@ -15,9 +15,9 @@ object DifficultyPresets {
     val Beginner = DifficultyProfile(
         name = "Beginner",
         timing = TimingWindow(
-            perfect = 120_000,
-            great = 220_000,
-            good = 350_000
+            perfectUs = 120_000,
+            greatUs = 220_000,
+            goodUs = 350_000
         ),
         allowMisses = true,
         maxChordSize = 2,
@@ -27,9 +27,9 @@ object DifficultyPresets {
     val Intermediate = DifficultyProfile(
         name = "Intermediate",
         timing = TimingWindow(
-            perfect = 70_000,
-            great = 140_000,
-            good = 220_000
+            perfectUs = 70_000,
+            greatUs = 140_000,
+            goodUs = 220_000
         ),
         allowMisses = true,
         maxChordSize = 4,
@@ -39,9 +39,9 @@ object DifficultyPresets {
     val Advanced = DifficultyProfile(
         name = "Advanced",
         timing = TimingWindow(
-            perfect = 40_000,
-            great = 90_000,
-            good = 150_000
+            perfectUs = 40_000,
+            greatUs = 90_000,
+            goodUs = 150_000
         ),
         allowMisses = false,
         maxChordSize = Int.MAX_VALUE,

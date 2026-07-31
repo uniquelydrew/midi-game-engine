@@ -3,7 +3,7 @@ package core.runtime
 import core.chart.PlayableChart
 import core.difficulty.DifficultyProfile
 import core.judgment.JudgmentEngine
-import core.judgment.MatchResult
+import core.judgment.Judgment
 import core.midi.MidiEvent
 import core.midi.NoteOn
 
@@ -21,25 +21,26 @@ class GameSessionWithDifficulty(
         judgmentEngine.load(chart.events)
     }
 
-    fun onInput(event: MidiEvent) {
+    fun onInput(event: MidiEvent): Judgment? {
         when (event) {
             is NoteOn -> {
                 val result = judgmentEngine.onNote(event.pitch, event.timestampUs)
                 handleResult(result, event)
+                return result
             }
-            else -> {}
+            else -> return null
         }
     }
 
-    private fun handleResult(result: MatchResult, event: NoteOn) {
+    private fun handleResult(result: Judgment, event: NoteOn) {
         when (result) {
-            MatchResult.Perfect,
-            MatchResult.Great,
-            MatchResult.Good -> {
+            Judgment.Perfect,
+            Judgment.Great,
+            Judgment.Good -> {
                 combo++
                 if (combo > maxCombo) maxCombo = combo
             }
-            MatchResult.Miss -> {
+            Judgment.Miss -> {
                 combo = 0
             }
         }

@@ -14,9 +14,9 @@ class SimulationHarness(
     private val transport = Transport(SystemClock())
     private val judgment = JudgmentEngine(
         TimingWindow(
-            perfect = 50_000,
-            great = 100_000,
-            good = 200_000
+            perfectUs = 50_000,
+            greatUs = 100_000,
+            goodUs = 200_000
         )
     )
 
