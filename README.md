@@ -60,6 +60,8 @@ The debug APK is written to:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+For Play Store signing, privacy, listing, and release verification, see [docs/PLAY_STORE_RELEASE.md](docs/PLAY_STORE_RELEASE.md), [docs/PLAY_STORE_LISTING.md](docs/PLAY_STORE_LISTING.md), and [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+
 Install it on a connected device or emulator with:
 
 ```powershell
