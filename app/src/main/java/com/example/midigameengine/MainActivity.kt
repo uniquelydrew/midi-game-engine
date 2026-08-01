@@ -1,90 +1,476 @@
 package com.example.midigameengine
 
-import android.app.Activity
+import android.net.Uri
+import android.content.Intent
 import android.os.Bundle
-import android.view.Gravity
+import android.provider.OpenableColumns
+import android.provider.DocumentsContract
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
-import core.chart.ExpectedInput
-import core.chart.PlayableChart
-import core.judgment.JudgmentEngine
-import core.judgment.TimingWindow
-import core.midi.NoteOn
-import core.runtime.GameSessionStateful
+import kotlin.math.roundToInt
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import core.visualization.KeyboardProfile
+import core.visualization.PitchRange
+import java.io.OutputStream
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
-    private val session = GameSessionStateful(
-        PlayableChart(
-            listOf(
-                ExpectedInput(pitch = 60, targetTimeUs = 1_000_000L),
-                ExpectedInput(pitch = 64, targetTimeUs = 1_500_000L)
-            )
-        ),
-        JudgmentEngine(
-            TimingWindow(
-                perfectUs = 50_000L,
-                greatUs = 100_000L,
-                goodUs = 200_000L
-            )
-        )
-    )
+    private lateinit var controller: TeachingSessionController
+    private lateinit var visualizerView: TeachingVisualizerView
+    private lateinit var timelineSeekBar: SeekBar
+    private lateinit var timeLabel: TextView
+    private lateinit var playPauseButton: Button
+    private lateinit var speedButton: Button
+    private lateinit var trimButton: Button
+    private lateinit var optionsPanel: View
+    private lateinit var optionsToggleButton: Button
+    private var userScrubbing = false
+    private var isPlaying = false
+    private var optionsExpanded = true
+    private var latestState: TeachingUiState? = null
+    private var activityActive = false
 
-    private lateinit var statusView: TextView
-    private var nextPitchIndex = 0
+    private val importMidiLauncher =
+        registerForActivityResult(object : ActivityResultContract<Array<String>, Uri?>() {
+            override fun createIntent(context: android.content.Context, input: Array<String>): Intent {
+                return Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("*/*")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                    .putExtra(Intent.EXTRA_MIME_TYPES, input)
+                    .apply {
+                        controller.lastPickerUri()?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
+                    }
+            }
+
+            override fun parseResult(resultCode: Int, intent: Intent?): Uri? {
+                return if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
+            }
+        }) { uri: Uri? ->
+            if (uri != null) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+                controller.importMidi(uri, resolveDisplayName(uri))
+            }
+        }
+
+    private val exportLogsLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
+            if (uri == null) return@registerForActivityResult
+            runCatching {
+                contentResolver.openOutputStream(uri)?.use { output: OutputStream ->
+                    output.write(AppDebugLogger.exportText(latestState).toByteArray(Charsets.UTF_8))
+                } ?: error("Unable to open export destination")
+                AppDebugLogger.log("Diagnostic export completed: $uri")
+            }.onFailure { error ->
+                AppDebugLogger.log("Diagnostic export failed", error)
+                android.widget.Toast.makeText(this, "Could not export logs", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppDebugLogger.initialize(this)
+        AppDebugLogger.log("onCreate orientation=${resources.configuration.orientation} saved=${savedInstanceState != null}")
+        optionsExpanded = savedInstanceState?.getBoolean("optionsExpanded", true) ?: true
 
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(48, 64, 48, 48)
-        }
-
-        statusView = TextView(this).apply {
-            textSize = 18f
-            text = "Android build shell is ready."
-        }
-
-        val simulateButton = Button(this).apply {
-            text = "Simulate MIDI Note"
-            setOnClickListener { simulateNote() }
-        }
-
-        container.addView(
-            statusView,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+        visualizerView = TeachingVisualizerView(this)
+        controller = TeachingSessionController(
+            context = this,
+            onStateChanged = { state ->
+                if (!activityActive) return@TeachingSessionController
+                latestState = state
+                AppDebugLogger.logState(state)
+                visualizerView.submitState(state)
+                if (::timelineSeekBar.isInitialized && !userScrubbing) {
+                    val duration = state.playbackEndUs - state.playbackStartUs
+                    timelineSeekBar.progress = if (duration <= 0L) 0 else {
+                        (((state.playbackTimeUs - state.playbackStartUs).toDouble() / duration) * timelineSeekBar.max)
+                            .toInt()
+                            .coerceIn(0, timelineSeekBar.max)
+                    }
+                    timeLabel.text = "${formatTime(state.playbackTimeUs - state.playbackStartUs)} / ${formatTime(duration)}"
+                }
+                if (::speedButton.isInitialized) speedButton.text = "${"%.2f".format(state.speed)}x"
+                if (::trimButton.isInitialized) trimButton.text = if (state.autoTrimEnabled) "Trim: On" else "Trim: Off"
+                isPlaying = state.isPlaying
+                if (::playPauseButton.isInitialized) playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
+            },
+            onTrackSelectionRequired = { choices ->
+                showTrackSelectionDialog(choices)
+            }
         )
-        container.addView(simulateButton)
 
-        setContentView(container)
+        val importButton = Button(this).apply {
+            text = "Import MIDI"
+            contentDescription = "Import a MIDI file"
+            setOnClickListener {
+                importMidiLauncher.launch(
+                    arrayOf(
+                        "audio/midi",
+                        "audio/x-midi",
+                        "application/midi",
+                        "audio/mid",
+                        "application/octet-stream"
+                    )
+                )
+            }
+        }
+
+        val demoButton = Button(this).apply {
+            text = "Load Demo"
+            contentDescription = "Load the bundled demo MIDI"
+            setOnClickListener {
+                controller.loadBundledDemo()
+            }
+        }
+
+        val trackButton = Button(this).apply {
+            text = "Tracks"
+            contentDescription = "Choose MIDI tracks"
+            setOnClickListener { controller.openTrackSelection() }
+        }
+        val libraryButton = Button(this).apply {
+            text = "Library"
+            contentDescription = "Open MIDI library"
+            setOnClickListener { showLibraryDialog() }
+        }
+        val layoutButton = Button(this).apply {
+            text = "Layout"
+            contentDescription = "Configure keyboard layout"
+            setOnClickListener { showLayoutDialog() }
+        }
+
+        playPauseButton = Button(this).apply {
+            text = "Play"
+            contentDescription = "Play or pause MIDI playback"
+            setOnClickListener {
+                if (isPlaying) controller.pause() else controller.play()
+            }
+        }
+        val restartButton = Button(this).apply {
+            text = "Restart"
+            contentDescription = "Restart playback"
+            setOnClickListener { controller.restart() }
+        }
+        speedButton = Button(this).apply {
+            text = "Speed"
+            contentDescription = "Change playback speed"
+            setOnClickListener { showSpeedDialog() }
+        }
+        trimButton = Button(this).apply {
+            text = "Auto Trim"
+            contentDescription = "Toggle automatic silence trimming"
+            setOnClickListener { controller.toggleAutoTrim() }
+        }
+
+        val exportLogsButton = Button(this).apply {
+            text = "Export Logs"
+            contentDescription = "Export diagnostic logs and current state"
+            setOnClickListener {
+                AppDebugLogger.log("Diagnostic export requested")
+                exportLogsLauncher.launch("midi-game-engine-debug.txt")
+            }
+        }
+
+        val quickPlayPauseButton = Button(this).apply {
+            text = "Play"
+            contentDescription = "Play or pause MIDI playback"
+            setOnClickListener {
+                if (isPlaying) controller.pause() else controller.play()
+            }
+        }
+
+        optionsToggleButton = Button(this).apply {
+            contentDescription = "Expand or collapse MIDI controls"
+            setOnClickListener { setOptionsExpanded(!optionsExpanded, quickPlayPauseButton) }
+        }
+
+        val toolbarRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(optionsToggleButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(quickPlayPauseButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(exportLogsButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(
+                importButton,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            addView(
+                demoButton,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            addView(trackButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(libraryButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(layoutButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+        val transportRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(playPauseButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(restartButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(speedButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(trimButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+        timeLabel = TextView(this).apply {
+            text = "0:00 / 0:00"
+            setPadding(dp(12), 0, dp(12), 0)
+            contentDescription = "Playback position"
+        }
+        timelineSeekBar = SeekBar(this).apply {
+            max = 1000
+            contentDescription = "Scrub playback timeline"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onStartTrackingTouch(seekBar: SeekBar) {
+                    userScrubbing = true
+                    controller.beginScrub()
+                }
+
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    if (fromUser) controller.scrubToFraction(progress / seekBar.max.toFloat())
+                }
+
+                override fun onStopTrackingTouch(seekBar: SeekBar) {
+                    userScrubbing = false
+                    controller.endScrub()
+                }
+            })
+        }
+
+        val timelineRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(timelineSeekBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(timeLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            addView(
+                toolbarRow,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                buttonRow,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                transportRow,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                timelineRow,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                visualizerView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+        }
+
+        setContentView(root)
+        optionsPanel = buttonRow
+        setOptionsExpanded(optionsExpanded, quickPlayPauseButton)
+        controller.restoreLast()
     }
 
-    private fun simulateNote() {
-        val scriptedEvents = listOf(
-            NoteOn(timestampUs = 1_000_000L, pitch = 60, velocity = 100, channel = 0),
-            NoteOn(timestampUs = 1_500_000L, pitch = 64, velocity = 100, channel = 0)
-        )
+    override fun onResume() {
+        super.onResume()
+        activityActive = true
+        AppDebugLogger.log("onResume")
+        controller.start()
+    }
 
-        val event = scriptedEvents[nextPitchIndex % scriptedEvents.size]
-        nextPitchIndex++
+    override fun onPause() {
+        activityActive = false
+        AppDebugLogger.log("onPause")
+        controller.stop()
+        super.onPause()
+    }
 
-        val judgment = session.onInput(event)
-        statusView.text = buildString {
-            append("Pitch ")
-            append(event.pitch)
-            append(" -> ")
-            append(judgment?.name ?: "ignored")
-            append("\nCombo: ")
-            append(session.getMaxCombo())
-            append("\nJudgments: ")
-            append(session.getResults().size)
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("optionsExpanded", optionsExpanded)
+        AppDebugLogger.log("onSaveInstanceState optionsExpanded=$optionsExpanded")
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroy() {
+        AppDebugLogger.log("onDestroy changingConfigurations=$isChangingConfigurations")
+        controller.release()
+        super.onDestroy()
+    }
+
+    private fun resolveDisplayName(uri: Uri): String {
+        val projection = arrayOf(OpenableColumns.DISPLAY_NAME)
+        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                return cursor.getString(nameIndex) ?: "Imported MIDI"
+            }
         }
+        return "Imported MIDI"
+    }
+
+    private fun showTrackSelectionDialog(choices: List<TeachingSessionController.TrackChoice>) {
+        val labels = choices.map { "${it.label} (${it.noteCount} notes)" }.toTypedArray()
+        val checked = BooleanArray(labels.size).apply {
+            choices.forEachIndexed { index, choice -> this[index] = choice.selected }
+            if (isNotEmpty() && none { it }) this[0] = true
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Choose MIDI tracks\nSelect one or more")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Use selected") { _, _ ->
+                val selected = checked.indices.filter { checked[it] }
+                if (selected.isEmpty()) {
+                    android.widget.Toast.makeText(
+                        this,
+                        "Select at least one track",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    controller.selectTracks(selected)
+                }
+            }
+            .show()
+    }
+
+    private fun showLibraryDialog() {
+        val entries = controller.libraryEntries()
+        if (entries.isEmpty()) {
+            android.widget.Toast.makeText(this, "No imported MIDI files", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = entries.map { it.displayName }.toTypedArray()
+        var selectedIndex = 0
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("MIDI Library")
+            .setSingleChoiceItems(labels, 0) { _, which -> selectedIndex = which }
+            .setNegativeButton("Close", null)
+            .setNeutralButton("Remove") { _, _ -> controller.removeLibraryEntry(entries[selectedIndex]) }
+            .setPositiveButton("Load") { _, _ -> controller.loadLibraryEntry(entries[selectedIndex]) }
+            .show()
+    }
+
+    private fun showLayoutDialog() {
+        val options = arrayOf(
+            "Auto detect",
+            "25-key keyboard",
+            "49-key keyboard",
+            "61-key keyboard",
+            "76-key keyboard",
+            "88-key keyboard",
+            "Full visible range",
+            "Visible range: selected tracks",
+            "Custom visible range"
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Keyboard Layout")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> controller.setAutoKeyboardProfile()
+                    1 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_25)
+                    2 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_49)
+                    3 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_61)
+                    4 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_76)
+                    5 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_88)
+                    6 -> controller.setVisibleRange(PitchRange(21, 108))
+                    7 -> controller.setVisibleRangeToSelectedTracks()
+                    8 -> showCustomRangeDialog()
+                }
+            }
+            .show()
+    }
+
+    private fun showCustomRangeDialog() {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(24), 0, dp(24), 0)
+        }
+        val first = EditText(this).apply {
+            hint = "First MIDI pitch"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val last = EditText(this).apply {
+            hint = "Last MIDI pitch"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        fields.addView(first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        fields.addView(last, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Visible MIDI range")
+            .setView(fields)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Apply") { _, _ ->
+                val firstPitch = first.text.toString().toIntOrNull()
+                val lastPitch = last.text.toString().toIntOrNull()
+                if (firstPitch != null && lastPitch != null && firstPitch in 0..127 && lastPitch in firstPitch..127) {
+                    controller.setVisibleRange(PitchRange(firstPitch, lastPitch))
+                } else {
+                    android.widget.Toast.makeText(this, "Use MIDI pitches from 0 to 127", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
+    }
+
+    private fun showSpeedDialog() {
+        val speeds = (5..40).map { it * 0.05 }.toTypedArray()
+        val labels = speeds.map { "${"%.2f".format(it)}x" }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Playback speed")
+            .setItems(labels) { _, which -> controller.setSpeed(speeds[which]) }
+            .show()
+    }
+
+    private fun formatTime(timeUs: Long): String {
+        val totalSeconds = (timeUs.coerceAtLeast(0L) / 1_000_000L).toInt()
+        return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).roundToInt()
+
+    private fun setOptionsExpanded(expanded: Boolean, quickPlayPauseButton: Button) {
+        optionsExpanded = expanded
+        optionsPanel.visibility = if (expanded) View.VISIBLE else View.GONE
+        val root = optionsPanel.parent as? ViewGroup
+        root?.getChildAt(2)?.visibility = if (expanded) View.VISIBLE else View.GONE
+        optionsToggleButton.text = if (expanded) "Hide Controls" else "Show Controls"
+        quickPlayPauseButton.visibility = if (expanded) View.GONE else View.VISIBLE
+        quickPlayPauseButton.text = if (isPlaying) "Pause" else "Play"
     }
 }
