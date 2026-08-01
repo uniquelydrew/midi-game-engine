@@ -39,6 +39,7 @@ Without release signing properties, Gradle produces an unsigned release artifact
 
 - Run `:core:testDebugUnitTest`.
 - Build and inspect `app/build/outputs/bundle/release/app-release.aab`.
+- Run `pwsh -File scripts/verify-release.ps1` and retain the output with the release notes.
 - Install a signed release APK on a clean Android 15/16 device.
 - Test MIDI import, track selection, library restore, physical MIDI input, audio playback, rotation, scrubbing, trim, zoom, and log export.
 - Run Android Studio's APK/AAB analyzer and confirm no unexpected permissions or native libraries.
