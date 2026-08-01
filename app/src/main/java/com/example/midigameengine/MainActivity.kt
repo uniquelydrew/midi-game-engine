@@ -2,11 +2,14 @@ package com.example.midigameengine
 
 import android.net.Uri
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.provider.DocumentsContract
 import android.view.View
 import android.view.ViewGroup
+import android.view.Gravity
+import android.graphics.drawable.GradientDrawable
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -135,16 +138,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val demoButton = Button(this).apply {
-            text = "Load Demo"
-            contentDescription = "Load the bundled demo MIDI"
-            setOnClickListener {
-                controller.loadBundledDemo()
-            }
-        }
-
         val trackButton = Button(this).apply {
-            text = "Tracks"
+            text = "Track"
             contentDescription = "Choose MIDI tracks"
             setOnClickListener { controller.openTrackSelection() }
         }
@@ -182,6 +177,17 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showTrimDialog() }
         }
 
+        listOf(
+            importButton,
+            trackButton,
+            libraryButton,
+            layoutButton,
+            playPauseButton,
+            restartButton,
+            speedButton,
+            trimButton
+        ).forEach(::styleButton)
+
         val exportLogsButton = Button(this).apply {
             text = "Export Logs"
             contentDescription = "Export diagnostic logs and current state"
@@ -206,32 +212,26 @@ class MainActivity : AppCompatActivity() {
 
         val toolbarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(optionsToggleButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(quickPlayPauseButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(exportLogsButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(optionsToggleButton, buttonParams())
+            addView(quickPlayPauseButton, buttonParams())
+            addView(exportLogsButton, buttonParams())
         }
+        listOf(optionsToggleButton, quickPlayPauseButton, exportLogsButton).forEach(::styleButton)
 
         val buttonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(
-                importButton,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            )
-            addView(
-                demoButton,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            )
-            addView(trackButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(libraryButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(layoutButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(importButton, buttonParams())
+            addView(trackButton, buttonParams())
+            addView(libraryButton, buttonParams())
+            addView(layoutButton, buttonParams())
         }
 
         val transportRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(playPauseButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(restartButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(speedButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(trimButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(playPauseButton, buttonParams())
+            addView(restartButton, buttonParams())
+            addView(speedButton, buttonParams())
+            addView(trimButton, buttonParams())
         }
 
         timeLabel = TextView(this).apply {
@@ -493,6 +493,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt()
+
+    private fun buttonParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            setMargins(dp(3), dp(3), dp(3), dp(3))
+        }
+
+    private fun styleButton(button: Button) {
+        button.setAllCaps(false)
+        button.textSize = 14f
+        button.maxLines = 1
+        button.ellipsize = android.text.TextUtils.TruncateAt.END
+        button.gravity = Gravity.CENTER
+        button.minHeight = dp(44)
+        button.minimumHeight = dp(44)
+        button.minWidth = 0
+        button.minimumWidth = 0
+        button.setPadding(dp(6), 0, dp(6), 0)
+        button.background = GradientDrawable().apply {
+            setColor(Color.rgb(235, 238, 243))
+            cornerRadius = dp(9).toFloat()
+            setStroke(dp(1), Color.rgb(210, 214, 221))
+        }
+        button.elevation = dp(2).toFloat()
+    }
 
     private fun setOptionsExpanded(expanded: Boolean, quickPlayPauseButton: Button) {
         optionsExpanded = expanded

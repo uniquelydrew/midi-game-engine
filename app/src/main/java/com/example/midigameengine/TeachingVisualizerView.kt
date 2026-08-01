@@ -208,7 +208,7 @@ class TeachingVisualizerView @JvmOverloads constructor(
     private fun drawHeader(canvas: Canvas, left: Float, top: Float, maxWidth: Float) {
         val header1 = state.sourceLabel
         val header2 = "${state.deviceStatus} | ${state.headline}"
-        val header3 = "${state.trackSummary} | ${state.physicalProfileLabel}"
+        val header3 = "${state.trackSummary} | ${state.physicalProfileLabel} | Zoom ${state.keyboardZoomLabel}"
         val header4 = "Visible ${PitchNames.name(state.visibleRangeFirstPitch)}-${PitchNames.name(state.visibleRangeLastPitch)}  Combo ${state.combo}  Progress ${(state.progress * 100f).toInt()}%"
 
         canvas.drawText(fitText(header1, textPaint, maxWidth), left, top, textPaint)
