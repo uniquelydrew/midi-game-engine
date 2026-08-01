@@ -12,6 +12,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -37,6 +38,7 @@ jobs:
   release-check:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v4
