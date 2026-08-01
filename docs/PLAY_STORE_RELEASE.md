@@ -6,7 +6,7 @@
 - Confirm the app name, support URL, privacy-policy URL, screenshots, feature graphic, and store description.
 - Review [PRIVACY_POLICY.md](PRIVACY_POLICY.md) and publish it at a stable HTTPS URL.
 - Publish [privacy-policy.html](privacy-policy.html) through the repository's public web hosting or another stable HTTPS host.
-- If using GitHub Pages, configure the repository to publish from the `docs/` folder; [index.html](index.html) provides the support landing page and links to the policy.
+- GitHub Pages deployment is defined in [pages.yml](../.github/workflows/pages.yml). Enable GitHub Pages with **GitHub Actions** as its source, then confirm the generated site URL before entering it in Play Console. [index.html](index.html) provides the support landing page and links to the policy.
 - Review [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) against the resolved Gradle dependency graph.
 
 ## Signing
@@ -52,6 +52,8 @@ The repository workflow runs core tests and a debug APK build for pushes and pul
 - `RELEASE_STORE_PASSWORD`
 - `RELEASE_KEY_ALIAS`
 - `RELEASE_KEY_PASSWORD`
+
+The Pages workflow publishes the support site whenever documentation changes on `main`. It does not make a Play Console account, create the app listing, or substitute for the required stable HTTPS privacy-policy URL verification.
 
 ## Current app data posture
 
