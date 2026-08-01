@@ -31,7 +31,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run core tests and build debug APK
-        run: ./gradlew :core:testDebugUnitTest :app:assembleDebug
+        env:
+          GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
+        run: ./gradlew --no-daemon --console=plain :core:testDebugUnitTest :app:assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -89,11 +91,12 @@ jobs:
 
       - name: Build signed release bundle
         env:
+          GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
           RELEASE_STORE_FILE: ${{ runner.temp }}/upload-key.jks
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew :core:testDebugUnitTest :app:bundleRelease
+        run: ./gradlew --no-daemon --console=plain :core:testDebugUnitTest :app:bundleRelease
 
       - name: Verify release bundle signature
         run: jarsigner -verify -verbose -certs app/build/outputs/bundle/release/app-release.aab
