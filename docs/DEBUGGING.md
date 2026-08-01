@@ -42,6 +42,7 @@ The application stores:
 - A separate last-session selected-track set.
 - The last picker URI.
 - Playback speed and auto-trim preference.
+- Adjustable trim padding and keyboard zoom preference.
 
 On launch, a multi-track MIDI only opens the track chooser when no saved track IDs match the parsed document. If the file changed and the saved IDs are no longer valid, prompting is intentional and prevents silently teaching the wrong tracks.
 

@@ -23,6 +23,7 @@ import core.time.Transport
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardProfileDetector
 import core.visualization.KeyboardProfileMode
+import core.visualization.KeyboardZoom
 import core.visualization.PitchRange
 import kotlin.concurrent.thread
 
@@ -65,6 +66,7 @@ class TeachingSessionController(
     private var keyboardProfile = KeyboardProfile.KEYS_88
     private var visibleRange = PitchRange(21, 108)
     private var playbackSettings = preferences.playbackSettings()
+    private var keyboardZoom = preferences.keyboardZoom()
     private var playbackWindow = PlaybackWindow(0L, 0L)
     private var scrubbing = false
 
@@ -341,6 +343,25 @@ class TeachingSessionController(
         emitState()
     }
 
+    fun setTrimPaddingMs(paddingMs: Int) {
+        synchronized(lock) {
+            playbackSettings = playbackSettings.copy(trimPaddingMs = paddingMs)
+            preferences.savePlaybackSettings(playbackSettings)
+            recalculatePlaybackWindow(resetToStart = true)
+            resetSessionAt(playbackWindow.startUs)
+            playbackSynth.seek(playbackWindow.startUs, false)
+        }
+        emitState()
+    }
+
+    fun setKeyboardZoom(zoom: KeyboardZoom) {
+        synchronized(lock) {
+            keyboardZoom = zoom
+            preferences.setKeyboardZoom(zoom)
+        }
+        emitState()
+    }
+
     fun toggleAutoTrim() {
         setAutoTrimEnabled(!playbackSettings.autoTrimEnabled)
     }
@@ -488,7 +509,7 @@ class TeachingSessionController(
 
     private fun recalculatePlaybackWindow(resetToStart: Boolean) {
         playbackWindow = if (playbackSettings.autoTrimEnabled) {
-            PlaybackWindow.fromChart(currentChart)
+            PlaybackWindow.fromChart(currentChart, playbackSettings.trimPaddingUs)
         } else {
             PlaybackWindow.fullChart(currentChart, currentSong?.let { ChartGenerator.durationUs(it) })
         }
@@ -601,6 +622,8 @@ class TeachingSessionController(
                 playbackEndUs = playbackWindow.endUs,
                 speed = playbackSettings.normalizedSpeed,
                 autoTrimEnabled = playbackSettings.autoTrimEnabled,
+                trimPaddingMs = playbackSettings.normalizedTrimPaddingMs,
+                keyboardZoomLabel = keyboardZoom.label,
                 isPlaying = playing,
                 isScrubbing = scrubbing
             )

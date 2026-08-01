@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import core.visualization.KeyboardProfile
+import core.visualization.KeyboardZoom
 import core.visualization.PitchRange
 import java.io.OutputStream
 
@@ -103,7 +104,13 @@ class MainActivity : AppCompatActivity() {
                     timeLabel.text = "${formatTime(state.playbackTimeUs - state.playbackStartUs)} / ${formatTime(duration)}"
                 }
                 if (::speedButton.isInitialized) speedButton.text = "${"%.2f".format(state.speed)}x"
-                if (::trimButton.isInitialized) trimButton.text = if (state.autoTrimEnabled) "Trim: On" else "Trim: Off"
+                if (::trimButton.isInitialized) {
+                    trimButton.text = if (state.autoTrimEnabled) {
+                        "Trim: ${state.trimPaddingMs}ms"
+                    } else {
+                        "Trim: Off"
+                    }
+                }
                 isPlaying = state.isPlaying
                 if (::playPauseButton.isInitialized) playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
             },
@@ -171,8 +178,8 @@ class MainActivity : AppCompatActivity() {
         }
         trimButton = Button(this).apply {
             text = "Auto Trim"
-            contentDescription = "Toggle automatic silence trimming"
-            setOnClickListener { controller.toggleAutoTrim() }
+            contentDescription = "Configure automatic silence trimming"
+            setOnClickListener { showTrimDialog() }
         }
 
         val exportLogsButton = Button(this).apply {
@@ -396,7 +403,10 @@ class MainActivity : AppCompatActivity() {
             "88-key keyboard",
             "Full visible range",
             "Visible range: selected tracks",
-            "Custom visible range"
+            "Custom visible range",
+            "Keyboard zoom: Compact",
+            "Keyboard zoom: Standard",
+            "Keyboard zoom: Large"
         )
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Keyboard Layout")
@@ -411,6 +421,9 @@ class MainActivity : AppCompatActivity() {
                     6 -> controller.setVisibleRange(PitchRange(21, 108))
                     7 -> controller.setVisibleRangeToSelectedTracks()
                     8 -> showCustomRangeDialog()
+                    9 -> controller.setKeyboardZoom(KeyboardZoom.COMPACT)
+                    10 -> controller.setKeyboardZoom(KeyboardZoom.STANDARD)
+                    11 -> controller.setKeyboardZoom(KeyboardZoom.LARGE)
                 }
             }
             .show()
@@ -453,6 +466,23 @@ class MainActivity : AppCompatActivity() {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Playback speed")
             .setItems(labels) { _, which -> controller.setSpeed(speeds[which]) }
+            .show()
+    }
+
+    private fun showTrimDialog() {
+        val paddings = intArrayOf(0, 25, 50, 100, 250, 500)
+        val labels = paddings.map { if (it == 0) "No padding" else "${it}ms before and after notes" }.toTypedArray()
+        val current = latestState?.trimPaddingMs ?: 50
+        val selected = paddings.indexOfFirst { it == current }.coerceAtLeast(0)
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(if (latestState?.autoTrimEnabled == true) "Auto trim: On" else "Auto trim: Off")
+            .setSingleChoiceItems(labels, selected) { _, which ->
+                controller.setTrimPaddingMs(paddings[which])
+            }
+            .setNeutralButton(if (latestState?.autoTrimEnabled == true) "Disable" else "Enable") { _, _ ->
+                controller.toggleAutoTrim()
+            }
+            .setNegativeButton("Close", null)
             .show()
     }
 

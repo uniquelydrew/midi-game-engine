@@ -39,7 +39,9 @@ SongModel (all tracks, names, tempo changes)
 ### Playback behavior
 
 - Auto-trim removes leading and trailing silence non-destructively using a 50 ms note boundary pad.
+- Auto-trim padding can be set to `0`, `25`, `50`, `100`, `250`, or `500 ms` from the Trim control.
 - Playback speed ranges from `0.25x` to `2.0x` in `0.05x` increments.
+- Keyboard zoom is available as Compact, Standard, or Large; it changes the keyboard strip size without changing pitch mapping.
 - Seeking resets judgment state and synchronizes the visualizer and audio event cursor.
 - Physical MIDI input remains independent from synthesized Android playback.
 

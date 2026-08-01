@@ -34,6 +34,8 @@ data class TeachingUiState(
     val playbackEndUs: Long,
     val speed: Double,
     val autoTrimEnabled: Boolean,
+    val trimPaddingMs: Int,
+    val keyboardZoomLabel: String,
     val isPlaying: Boolean,
     val isScrubbing: Boolean
 ) {
@@ -66,6 +68,8 @@ data class TeachingUiState(
                 playbackEndUs = 0L,
                 speed = 1.0,
                 autoTrimEnabled = true,
+                trimPaddingMs = 50,
+                keyboardZoomLabel = "Standard",
                 isPlaying = false,
                 isScrubbing = false
             )

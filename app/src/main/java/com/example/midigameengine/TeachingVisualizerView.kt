@@ -98,10 +98,10 @@ class TeachingVisualizerView @JvmOverloads constructor(
         val density = resources.displayMetrics.density
         val padding = 20f * density
         val keyboardHeight = if (widthF > heightF) {
-            (96f * density).coerceAtMost(heightF * 0.22f)
+            (96f * density * zoomScale()).coerceAtMost(heightF * 0.30f)
         } else {
-            (128f * density).coerceAtMost(heightF * 0.20f)
-        }.coerceAtLeast(72f * density)
+            (128f * density * zoomScale()).coerceAtMost(heightF * 0.28f)
+        }.coerceAtLeast(64f * density)
         val keyboardTop = heightF - keyboardHeight - padding
         val laneTop = padding * 2.2f
         val pixelsPerSecond = (keyboardTop - laneTop).coerceAtLeast(1f) / 4f
@@ -197,6 +197,12 @@ class TeachingVisualizerView @JvmOverloads constructor(
             feedbackProgress,
             currentTimeUs
         )
+    }
+
+    private fun zoomScale(): Float = when (state.keyboardZoomLabel) {
+        "Compact" -> 0.75f
+        "Large" -> 1.35f
+        else -> 1.0f
     }
 
     private fun drawHeader(canvas: Canvas, left: Float, top: Float, maxWidth: Float) {

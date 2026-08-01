@@ -4,6 +4,7 @@ import android.content.Context
 import core.chart.PlaybackSettings
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardProfileMode
+import core.visualization.KeyboardZoom
 import core.visualization.PitchRange
 import org.json.JSONArray
 import org.json.JSONObject
@@ -108,7 +109,8 @@ class AppPreferencesStore(context: Context) {
     fun playbackSettings(): PlaybackSettings {
         return PlaybackSettings(
             speed = preferences.getFloat(KEY_SPEED, 1.0f).toDouble(),
-            autoTrimEnabled = preferences.getBoolean(KEY_AUTO_TRIM, true)
+            autoTrimEnabled = preferences.getBoolean(KEY_AUTO_TRIM, true),
+            trimPaddingMs = preferences.getInt(KEY_TRIM_PADDING_MS, 50)
         )
     }
 
@@ -116,7 +118,18 @@ class AppPreferencesStore(context: Context) {
         preferences.edit()
             .putFloat(KEY_SPEED, settings.normalizedSpeed.toFloat())
             .putBoolean(KEY_AUTO_TRIM, settings.autoTrimEnabled)
+            .putInt(KEY_TRIM_PADDING_MS, settings.normalizedTrimPaddingMs)
             .apply()
+    }
+
+    fun keyboardZoom(): KeyboardZoom {
+        return runCatching {
+            KeyboardZoom.valueOf(preferences.getString(KEY_KEYBOARD_ZOOM, KeyboardZoom.STANDARD.name)!!)
+        }.getOrDefault(KeyboardZoom.STANDARD)
+    }
+
+    fun setKeyboardZoom(zoom: KeyboardZoom) {
+        preferences.edit().putString(KEY_KEYBOARD_ZOOM, zoom.name).apply()
     }
 
     private companion object {
@@ -126,5 +139,7 @@ class AppPreferencesStore(context: Context) {
         const val KEY_LAST_PICKER_URI = "last-picker-uri"
         const val KEY_SPEED = "playback-speed"
         const val KEY_AUTO_TRIM = "auto-trim"
+        const val KEY_TRIM_PADDING_MS = "trim-padding-ms"
+        const val KEY_KEYBOARD_ZOOM = "keyboard-zoom"
     }
 }
