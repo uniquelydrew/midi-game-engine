@@ -41,5 +41,7 @@ class GameSessionStateful(
 
     fun getResults(): List<Judgment> = results
 
+    fun getCombo(): Int = combo
+
     fun getMaxCombo(): Int = maxCombo
 }
