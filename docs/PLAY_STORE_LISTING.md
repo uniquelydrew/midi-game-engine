@@ -48,4 +48,12 @@ These notes are a preparation aid only; complete the official Play Console quest
 
 ## Privacy policy
 
-Publish [PRIVACY_POLICY.md](PRIVACY_POLICY.md) at a stable HTTPS URL and enter that URL in Play Console.
+Preferred hosted URL after Pages is enabled:
+
+<https://uniquelydrew.github.io/midi-game-engine/privacy-policy.html>
+
+Fallback source URL while Pages is being enabled:
+
+<https://github.com/uniquelydrew/midi-game-engine/blob/main/docs/privacy-policy.html>
+
+Confirm that the selected URL is publicly readable, current, and accepted by Play Console before submitting the app.
