@@ -33,8 +33,15 @@ data class PlaybackWindow(
 
 data class PlaybackSettings(
     val speed: Double = 1.0,
-    val autoTrimEnabled: Boolean = true
+    val autoTrimEnabled: Boolean = true,
+    val trimPaddingMs: Int = 50
 ) {
     val normalizedSpeed: Double
         get() = ((speed * 20.0).toInt() / 20.0).coerceIn(0.25, 2.0)
+
+    val normalizedTrimPaddingMs: Int
+        get() = trimPaddingMs.coerceIn(0, 2_000)
+
+    val trimPaddingUs: Long
+        get() = normalizedTrimPaddingMs * 1_000L
 }
