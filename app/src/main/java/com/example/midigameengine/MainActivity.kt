@@ -516,7 +516,7 @@ class MainActivity : AppCompatActivity() {
         button.setPadding(dp(6), 0, dp(6), 0)
         val darkMode = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        button.setTextColor(themeColor(android.R.attr.textColorPrimary))
+        button.setTextColor(themeColorStateList(android.R.attr.textColorPrimary))
         button.background = GradientDrawable().apply {
             setColor(if (darkMode) Color.rgb(42, 47, 58) else Color.rgb(235, 238, 243))
             cornerRadius = dp(9).toFloat()
@@ -531,9 +531,23 @@ class MainActivity : AppCompatActivity() {
             "Theme attribute $attribute is not defined"
         }
         return if (value.resourceId != 0) {
-            androidx.core.content.ContextCompat.getColor(this, value.resourceId)
+            androidx.core.content.ContextCompat.getColorStateList(this, value.resourceId)?.defaultColor
+                ?: value.data
         } else {
             value.data
+        }
+    }
+
+    private fun themeColorStateList(attribute: Int): android.content.res.ColorStateList {
+        val value = TypedValue()
+        check(theme.resolveAttribute(attribute, value, true)) {
+            "Theme attribute $attribute is not defined"
+        }
+        return if (value.resourceId != 0) {
+            androidx.core.content.ContextCompat.getColorStateList(this, value.resourceId)
+                ?: android.content.res.ColorStateList.valueOf(value.data)
+        } else {
+            android.content.res.ColorStateList.valueOf(value.data)
         }
     }
 
