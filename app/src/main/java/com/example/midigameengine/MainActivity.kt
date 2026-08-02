@@ -93,7 +93,13 @@ class MainActivity : AppCompatActivity() {
         AppDebugLogger.log("onCreate orientation=${resources.configuration.orientation} saved=${savedInstanceState != null}")
         optionsExpanded = savedInstanceState?.getBoolean("optionsExpanded", true) ?: true
 
-        visualizerView = TeachingVisualizerView(this)
+        visualizerView = TeachingVisualizerView(this).apply {
+            isClickable = true
+            contentDescription = "Tap the visualization to play or pause MIDI playback"
+            setOnClickListener {
+                if (isPlaying) controller.pause() else controller.play()
+            }
+        }
         controller = TeachingSessionController(
             context = this,
             onStateChanged = { state ->
