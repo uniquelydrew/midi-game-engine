@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Gravity
 import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -19,6 +20,7 @@ import kotlin.math.roundToInt
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardZoom
 import core.visualization.PitchRange
@@ -84,6 +86,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         super.onCreate(savedInstanceState)
         AppDebugLogger.initialize(this)
         AppDebugLogger.log("onCreate orientation=${resources.configuration.orientation} saved=${savedInstanceState != null}")
@@ -268,6 +271,7 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
+            setBackgroundColor(themeColor(android.R.attr.colorBackground))
             addView(
                 toolbarRow,
                 ViewGroup.LayoutParams(
@@ -510,12 +514,27 @@ class MainActivity : AppCompatActivity() {
         button.minWidth = 0
         button.minimumWidth = 0
         button.setPadding(dp(6), 0, dp(6), 0)
+        val darkMode = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        button.setTextColor(themeColor(android.R.attr.textColorPrimary))
         button.background = GradientDrawable().apply {
-            setColor(Color.rgb(235, 238, 243))
+            setColor(if (darkMode) Color.rgb(42, 47, 58) else Color.rgb(235, 238, 243))
             cornerRadius = dp(9).toFloat()
-            setStroke(dp(1), Color.rgb(210, 214, 221))
+            setStroke(dp(1), if (darkMode) Color.rgb(73, 82, 98) else Color.rgb(210, 214, 221))
         }
         button.elevation = dp(2).toFloat()
+    }
+
+    private fun themeColor(attribute: Int): Int {
+        val value = TypedValue()
+        check(theme.resolveAttribute(attribute, value, true)) {
+            "Theme attribute $attribute is not defined"
+        }
+        return if (value.resourceId != 0) {
+            androidx.core.content.ContextCompat.getColor(this, value.resourceId)
+        } else {
+            value.data
+        }
     }
 
     private fun setOptionsExpanded(expanded: Boolean, quickPlayPauseButton: Button) {
