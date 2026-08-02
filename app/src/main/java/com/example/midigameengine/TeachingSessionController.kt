@@ -64,7 +64,8 @@ class TeachingSessionController(
     private val observedInputPitches = mutableSetOf<Int>()
     private var keyboardProfileMode = KeyboardProfileMode.AUTO
     private var keyboardProfile = KeyboardProfile.KEYS_88
-    private var visibleRange = PitchRange(21, 108)
+    private var visibleRangeMode = preferences.layoutPreference(null).visibleRangeMode
+    private var visibleRange = preferences.layoutPreference(null).visibleRange
     private var playbackSettings = preferences.playbackSettings()
     private var keyboardZoom = preferences.keyboardZoom()
     private var playbackWindow = PlaybackWindow(0L, 0L)
@@ -124,6 +125,10 @@ class TeachingSessionController(
                     saved.profile
                 }
                 visibleRange = saved.visibleRange
+                visibleRangeMode = saved.visibleRangeMode
+                if (visibleRangeMode == VisibleRangeMode.SELECTED_TRACKS) {
+                    visibleRange = selectedTrackRange(currentSong, selectedTrackIds) ?: PitchRange(21, 108)
+                }
             }
             emitState()
         }
@@ -301,24 +306,25 @@ class TeachingSessionController(
     fun setVisibleRange(range: PitchRange) {
         synchronized(lock) {
             visibleRange = range
+            visibleRangeMode = if (range.firstPitch == 21 && range.lastPitch == 108) {
+                VisibleRangeMode.FULL
+            } else {
+                VisibleRangeMode.CUSTOM
+            }
             saveLayoutPreference()
         }
         emitState()
     }
 
+    fun setFullVisibleRange() {
+        setVisibleRange(PitchRange(21, 108))
+    }
+
     fun setVisibleRangeToSelectedTracks() {
         synchronized(lock) {
-            val pitches = currentSong?.tracks
-                ?.filter { it.id in selectedTrackIds }
-                ?.flatMap { track -> track.notes.map { it.pitch } }
-                .orEmpty()
-            if (pitches.isNotEmpty()) {
-                visibleRange = PitchRange(
-                    (pitches.minOrNull()!! - 2).coerceIn(21, 108),
-                    (pitches.maxOrNull()!! + 2).coerceIn(21, 108)
-                )
-                saveLayoutPreference()
-            }
+            visibleRangeMode = VisibleRangeMode.SELECTED_TRACKS
+            visibleRange = selectedTrackRange(currentSong, selectedTrackIds) ?: PitchRange(21, 108)
+            saveLayoutPreference()
         }
         emitState()
     }
@@ -510,6 +516,9 @@ class TeachingSessionController(
             currentSong = song
             currentUri = uri
             selectedTrackIds = trackIds
+            if (visibleRangeMode == VisibleRangeMode.SELECTED_TRACKS) {
+                visibleRange = selectedTrackRange(song, trackIds) ?: PitchRange(21, 108)
+            }
             currentChart = chart
             session = newSession(chart)
             currentSourceLabel = sourceLabel
@@ -567,10 +576,22 @@ class TeachingSessionController(
         }
     }
 
+    private fun selectedTrackRange(song: SongModel?, trackIds: Set<String>): PitchRange? {
+        val pitches = song?.tracks
+            ?.filter { it.id in trackIds }
+            ?.flatMap { track -> track.notes.map { it.pitch } }
+            .orEmpty()
+        if (pitches.isEmpty()) return null
+        return PitchRange(
+            (pitches.minOrNull()!! - 2).coerceIn(21, 108),
+            (pitches.maxOrNull()!! + 2).coerceIn(21, 108)
+        )
+    }
+
     private fun saveLayoutPreference() {
         preferences.saveLayoutPreference(
             deviceDescription,
-            LayoutPreference(keyboardProfileMode, keyboardProfile, visibleRange)
+            LayoutPreference(keyboardProfileMode, keyboardProfile, visibleRange, visibleRangeMode)
         )
     }
 

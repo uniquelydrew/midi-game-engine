@@ -481,7 +481,7 @@ class MainActivity : AppCompatActivity() {
                     3 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_61)
                     4 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_76)
                     5 -> controller.setManualKeyboardProfile(KeyboardProfile.KEYS_88)
-                    6 -> controller.setVisibleRange(PitchRange(21, 108))
+                    6 -> controller.setFullVisibleRange()
                     7 -> controller.setVisibleRangeToSelectedTracks()
                     8 -> showCustomRangeDialog()
                     9 -> controller.setKeyboardZoom(KeyboardZoom.COMPACT)

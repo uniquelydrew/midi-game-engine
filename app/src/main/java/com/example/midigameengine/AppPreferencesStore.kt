@@ -18,7 +18,8 @@ data class LibraryEntry(
 data class LayoutPreference(
     val mode: KeyboardProfileMode = KeyboardProfileMode.AUTO,
     val profile: KeyboardProfile = KeyboardProfile.KEYS_88,
-    val visibleRange: PitchRange = PitchRange(21, 108)
+    val visibleRange: PitchRange = PitchRange(21, 108),
+    val visibleRangeMode: VisibleRangeMode = VisibleRangeMode.SELECTED_TRACKS
 )
 
 class AppPreferencesStore(context: Context) {
@@ -93,7 +94,12 @@ class AppPreferencesStore(context: Context) {
         }.getOrDefault(KeyboardProfile.KEYS_88)
         val first = preferences.getInt(prefix + "first", 21)
         val last = preferences.getInt(prefix + "last", 108)
-        return LayoutPreference(mode, profile, PitchRange(first, last))
+        val rangeMode = runCatching {
+            VisibleRangeMode.valueOf(
+                preferences.getString(prefix + "range-mode", VisibleRangeMode.SELECTED_TRACKS.name)!!
+            )
+        }.getOrDefault(VisibleRangeMode.SELECTED_TRACKS)
+        return LayoutPreference(mode, profile, PitchRange(first, last), rangeMode)
     }
 
     fun saveLayoutPreference(deviceKey: String?, preference: LayoutPreference) {
@@ -103,6 +109,7 @@ class AppPreferencesStore(context: Context) {
             .putString(prefix + "profile", preference.profile.name)
             .putInt(prefix + "first", preference.visibleRange.firstPitch)
             .putInt(prefix + "last", preference.visibleRange.lastPitch)
+            .putString(prefix + "range-mode", preference.visibleRangeMode.name)
             .apply()
     }
 
