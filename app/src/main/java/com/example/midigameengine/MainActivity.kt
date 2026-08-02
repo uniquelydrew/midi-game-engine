@@ -136,9 +136,9 @@ class MainActivity : AppCompatActivity() {
                             val durationUs = latestState?.chartLengthUs ?: 0L
                             val viewHeight = view.height.coerceAtLeast(1)
                             val deltaUs = if (durationUs > 0L) {
-                                (event.y - visualizationLastY) / viewHeight.toFloat() * durationUs
+                                (event.y - visualizationLastY) / viewHeight.toFloat() * durationUs * SEEK_SENSITIVITY
                             } else {
-                                (event.y - visualizationLastY) * 20_000f
+                                (event.y - visualizationLastY) * 20_000f * SEEK_SENSITIVITY
                             }
                             if (deltaUs.toLong() != 0L) {
                                 controller.seekRelative(deltaUs.toLong())
@@ -596,6 +596,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt()
+
+    private companion object {
+        const val SEEK_SENSITIVITY = 0.25f
+    }
 
     private fun buttonParams(): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
