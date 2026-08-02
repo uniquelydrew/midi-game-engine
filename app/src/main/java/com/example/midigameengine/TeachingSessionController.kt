@@ -421,9 +421,9 @@ class TeachingSessionController(
             resetSessionAt(target)
             playbackSynth.seek(target, playing)
             currentHeadline = if (deltaUs < 0L) {
-                "Rewound 5 seconds"
+                "Seeking backward"
             } else {
-                "Fast-forwarded 5 seconds"
+                "Seeking forward"
             }
         }
         emitState()

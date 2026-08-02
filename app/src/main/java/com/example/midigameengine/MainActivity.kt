@@ -47,7 +47,9 @@ class MainActivity : AppCompatActivity() {
     private var activityActive = false
     private var visualizationDownX = 0f
     private var visualizationDownY = 0f
-    private var visualizationSwipe = false
+    private var visualizationLastY = 0f
+    private var visualizationMoved = false
+    private var visualizationScrubbing = false
 
     private val importMidiLauncher =
         registerForActivityResult(object : ActivityResultContract<Array<String>, Uri?>() {
@@ -109,36 +111,58 @@ class MainActivity : AppCompatActivity() {
                     MotionEvent.ACTION_DOWN -> {
                         visualizationDownX = event.x
                         visualizationDownY = event.y
-                        visualizationSwipe = false
+                        visualizationLastY = event.y
+                        visualizationMoved = false
+                        visualizationScrubbing = false
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dx = event.x - visualizationDownX
                         val dy = event.y - visualizationDownY
                         val slop = ViewConfiguration.get(this@MainActivity).scaledTouchSlop
-                        if (!visualizationSwipe &&
+                        if (!visualizationMoved &&
                             maxOf(kotlin.math.abs(dx), kotlin.math.abs(dy)) > slop
                         ) {
-                            visualizationSwipe = true
+                            visualizationMoved = true
                         }
+                        if (!visualizationScrubbing &&
+                            kotlin.math.abs(dy) > slop &&
+                            kotlin.math.abs(dy) > kotlin.math.abs(dx)
+                        ) {
+                            visualizationScrubbing = true
+                            controller.beginScrub()
+                        }
+                        if (visualizationScrubbing) {
+                            val durationUs = latestState?.chartLengthUs ?: 0L
+                            val viewHeight = view.height.coerceAtLeast(1)
+                            val deltaUs = if (durationUs > 0L) {
+                                (event.y - visualizationLastY) / viewHeight.toFloat() * durationUs
+                            } else {
+                                (event.y - visualizationLastY) * 20_000f
+                            }
+                            if (deltaUs.toLong() != 0L) {
+                                controller.seekRelative(deltaUs.toLong())
+                            }
+                        }
+                        visualizationLastY = event.y
                         true
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (visualizationSwipe) {
-                            val dx = event.x - visualizationDownX
-                            val dy = event.y - visualizationDownY
-                            if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
-                                val fastForward = dy > 0f
-                                controller.seekRelative(if (fastForward) SEEK_STEP_US else -SEEK_STEP_US)
-                            }
-                        } else {
+                        if (visualizationScrubbing) {
+                            controller.endScrub()
+                        } else if (!visualizationMoved) {
                             view.performClick()
+                        } else {
+                            // Ignore horizontal drags; only vertical motion scrubs playback.
                         }
-                        visualizationSwipe = false
+                        visualizationMoved = false
+                        visualizationScrubbing = false
                         true
                     }
                     MotionEvent.ACTION_CANCEL -> {
-                        visualizationSwipe = false
+                        if (visualizationScrubbing) controller.endScrub()
+                        visualizationMoved = false
+                        visualizationScrubbing = false
                         true
                     }
                     else -> false
@@ -572,10 +596,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt()
-
-    private companion object {
-        const val SEEK_STEP_US = 5_000_000L
-    }
 
     private fun buttonParams(): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
