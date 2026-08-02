@@ -9,6 +9,8 @@ import android.provider.DocumentsContract
 import android.view.View
 import android.view.ViewGroup
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.widget.Button
@@ -43,6 +45,9 @@ class MainActivity : AppCompatActivity() {
     private var optionsExpanded = true
     private var latestState: TeachingUiState? = null
     private var activityActive = false
+    private var visualizationDownX = 0f
+    private var visualizationDownY = 0f
+    private var visualizationSwipe = false
 
     private val importMidiLauncher =
         registerForActivityResult(object : ActivityResultContract<Array<String>, Uri?>() {
@@ -98,6 +103,46 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Tap the visualization to play or pause MIDI playback"
             setOnClickListener {
                 if (isPlaying) controller.pause() else controller.play()
+            }
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        visualizationDownX = event.x
+                        visualizationDownY = event.y
+                        visualizationSwipe = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = event.x - visualizationDownX
+                        val dy = event.y - visualizationDownY
+                        val slop = ViewConfiguration.get(this@MainActivity).scaledTouchSlop
+                        if (!visualizationSwipe &&
+                            maxOf(kotlin.math.abs(dx), kotlin.math.abs(dy)) > slop
+                        ) {
+                            visualizationSwipe = true
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (visualizationSwipe) {
+                            val dx = event.x - visualizationDownX
+                            val dy = event.y - visualizationDownY
+                            if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
+                                val fastForward = dy > 0f
+                                controller.seekRelative(if (fastForward) SEEK_STEP_US else -SEEK_STEP_US)
+                            }
+                        } else {
+                            view.performClick()
+                        }
+                        visualizationSwipe = false
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        visualizationSwipe = false
+                        true
+                    }
+                    else -> false
+                }
             }
         }
         controller = TeachingSessionController(
@@ -527,6 +572,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt()
+
+    private companion object {
+        const val SEEK_STEP_US = 5_000_000L
+    }
 
     private fun buttonParams(): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {

@@ -409,6 +409,20 @@ class TeachingSessionController(
         emitState()
     }
 
+    fun seekRelative(deltaUs: Long) {
+        synchronized(lock) {
+            val target = playbackWindow.clamp(transport.positionNs() / 1000L + deltaUs)
+            resetSessionAt(target)
+            playbackSynth.seek(target, playing)
+            currentHeadline = if (deltaUs < 0L) {
+                "Rewound 5 seconds"
+            } else {
+                "Fast-forwarded 5 seconds"
+            }
+        }
+        emitState()
+    }
+
     fun selectTracks(indices: List<Int>, sourceLabel: String = pendingDisplayName) {
         val song = synchronized(lock) { pendingSong ?: currentSong }
             ?: error("No MIDI track selection is pending")
