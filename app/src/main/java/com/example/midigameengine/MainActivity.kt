@@ -37,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trimButton: Button
     private lateinit var optionsPanel: View
     private lateinit var optionsToggleButton: Button
+    private lateinit var gameModeButton: Button
     private var userScrubbing = false
     private var isPlaying = false
     private var optionsExpanded = true
@@ -117,6 +118,7 @@ class MainActivity : AppCompatActivity() {
                         "Trim: Off"
                     }
                 }
+                if (::gameModeButton.isInitialized) gameModeButton.text = state.gameMode.label
                 isPlaying = state.isPlaying
                 if (::playPauseButton.isInitialized) playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
             },
@@ -155,6 +157,11 @@ class MainActivity : AppCompatActivity() {
             text = "Layout"
             contentDescription = "Configure keyboard layout"
             setOnClickListener { showLayoutDialog() }
+        }
+        gameModeButton = Button(this).apply {
+            text = "Teaching"
+            contentDescription = "Choose game mode"
+            setOnClickListener { showGameModeDialog() }
         }
 
         playPauseButton = Button(this).apply {
@@ -218,8 +225,9 @@ class MainActivity : AppCompatActivity() {
             addView(optionsToggleButton, buttonParams())
             addView(quickPlayPauseButton, buttonParams())
             addView(exportLogsButton, buttonParams())
+            addView(gameModeButton, buttonParams())
         }
-        listOf(optionsToggleButton, quickPlayPauseButton, exportLogsButton).forEach(::styleButton)
+        listOf(optionsToggleButton, quickPlayPauseButton, exportLogsButton, gameModeButton).forEach(::styleButton)
 
         val buttonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -430,6 +438,22 @@ class MainActivity : AppCompatActivity() {
                     11 -> controller.setKeyboardZoom(KeyboardZoom.LARGE)
                 }
             }
+            .show()
+    }
+
+    private fun showGameModeDialog() {
+        val modes = GameMode.values()
+        val selected = modes.indexOf(controller.gameMode()).coerceAtLeast(0)
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Game mode")
+            .setSingleChoiceItems(
+                modes.map { "${it.label}\n${it.description}" }.toTypedArray(),
+                selected
+            ) { dialog, which ->
+                controller.setGameMode(modes[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton("Close", null)
             .show()
     }
 

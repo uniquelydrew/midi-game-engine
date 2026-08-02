@@ -42,7 +42,7 @@ class TeachingSessionController(
     private val preferences = AppPreferencesStore(context)
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
-    private var currentSourceLabel = "Demo"
+    private var currentSourceLabel = "No MIDI loaded"
     private var currentHeadline = "Loading..."
     private var currentDeviceStatus = "Waiting for MIDI device"
     private var currentChart = PlayableChart(emptyList())
@@ -69,6 +69,7 @@ class TeachingSessionController(
     private var keyboardZoom = preferences.keyboardZoom()
     private var playbackWindow = PlaybackWindow(0L, 0L)
     private var scrubbing = false
+    private var gameMode = preferences.gameMode()
 
     private val frameRunnable = object : Runnable {
         override fun run() {
@@ -200,15 +201,14 @@ class TeachingSessionController(
         emitState()
     }
 
-    fun loadBundledDemo() {
-        val bytes = context.assets.open("preloaded_song.mid").use { it.readBytes() }
-        loadMidiBytes(bytes, "Bundled demo", null, persist = false)
-    }
-
     fun restoreLast() {
         val uriString = preferences.lastUri() ?: run {
-            loadBundledDemo()
-            pause()
+            synchronized(lock) {
+                currentHeadline = "Import a MIDI file to begin"
+                playing = false
+                transport.pause()
+            }
+            emitState()
             return
         }
         val uri = Uri.parse(uriString)
@@ -361,6 +361,20 @@ class TeachingSessionController(
         }
         emitState()
     }
+
+    fun setGameMode(mode: GameMode) {
+        synchronized(lock) {
+            gameMode = mode
+            preferences.setGameMode(mode)
+            currentHeadline = when (mode) {
+                GameMode.TEACHING -> "Teaching mode"
+                GameMode.GAME -> "Game mode selected; teaching engine active"
+            }
+        }
+        emitState()
+    }
+
+    fun gameMode(): GameMode = synchronized(lock) { gameMode }
 
     fun toggleAutoTrim() {
         setAutoTrimEnabled(!playbackSettings.autoTrimEnabled)
@@ -590,6 +604,7 @@ class TeachingSessionController(
 
             TeachingUiState(
                 sourceLabel = currentSourceLabel,
+                gameMode = gameMode,
                 deviceStatus = currentDeviceStatus,
                 headline = currentHeadline,
                 playbackTimeUs = currentTimeUs,

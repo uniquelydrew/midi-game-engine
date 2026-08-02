@@ -4,12 +4,13 @@ An Android teaching application for practicing MIDI performances against a synch
 
 ## Current Workflow
 
-1. Import a Standard MIDI file with **Import MIDI**, or load the bundled demo.
+1. Import a Standard MIDI file with **Import MIDI**.
 2. Select one or more tracks when a file contains multiple tracks.
 3. Use **Tracks** to change the teaching selection after import.
-4. Use **Layout** to choose the physical keyboard profile and visible MIDI range.
-5. Press **Play**, scrub the timeline, adjust speed, and practice against the visualizer.
-6. Reopen imported files from **Library**. The source MIDI, selected tracks, layout, trim preference, and playback speed are persisted locally.
+4. Toggle between **Teaching** and **Game** mode; Game mode currently references the teaching engine while its rules are developed.
+5. Use **Layout** to choose the physical keyboard profile and visible MIDI range.
+6. Press **Play**, scrub the timeline, adjust speed, and practice against the visualizer.
+7. Reopen imported files from **Library**. The source MIDI, selected tracks, layout, trim preference, and playback speed are persisted locally.
 
 The app keeps the complete parsed MIDI document as its source of truth. Track selection creates a derived playable chart without replacing the original MIDI data.
 

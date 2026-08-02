@@ -132,6 +132,16 @@ class AppPreferencesStore(context: Context) {
         preferences.edit().putString(KEY_KEYBOARD_ZOOM, zoom.name).apply()
     }
 
+    fun gameMode(): GameMode {
+        return runCatching {
+            GameMode.valueOf(preferences.getString(KEY_GAME_MODE, GameMode.TEACHING.name)!!)
+        }.getOrDefault(GameMode.TEACHING)
+    }
+
+    fun setGameMode(mode: GameMode) {
+        preferences.edit().putString(KEY_GAME_MODE, mode.name).apply()
+    }
+
     private companion object {
         const val KEY_LIBRARY = "library"
         const val KEY_LAST_URI = "last-uri"
@@ -141,5 +151,6 @@ class AppPreferencesStore(context: Context) {
         const val KEY_AUTO_TRIM = "auto-trim"
         const val KEY_TRIM_PADDING_MS = "trim-padding-ms"
         const val KEY_KEYBOARD_ZOOM = "keyboard-zoom"
+        const val KEY_GAME_MODE = "game-mode"
     }
 }

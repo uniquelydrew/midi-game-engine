@@ -9,6 +9,7 @@ data class TeachingNoteState(
 
 data class TeachingUiState(
     val sourceLabel: String,
+    val gameMode: GameMode,
     val deviceStatus: String,
     val headline: String,
     val playbackTimeUs: Long,
@@ -42,7 +43,8 @@ data class TeachingUiState(
     companion object {
         fun empty(): TeachingUiState {
             return TeachingUiState(
-                sourceLabel = "Demo",
+                sourceLabel = "No MIDI loaded",
+                gameMode = GameMode.TEACHING,
                 deviceStatus = "Waiting for MIDI device",
                 headline = "Loading...",
                 playbackTimeUs = 0L,
