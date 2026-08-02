@@ -108,7 +108,6 @@ class TeachingVisualizerView @JvmOverloads constructor(
         val currentTimeUs = state.playbackTimeUs
         val nextPitches = state.nextExpectedNotes.map { it.pitch }.toSet()
         val activePitches = state.activeNotes.map { it.pitch }.toSet()
-        val matchedPitches = state.notes.filter { it.matched }.map { it.pitch }.toSet()
         val visibleRange = PitchRange(state.visibleRangeFirstPitch, state.visibleRangeLastPitch)
         val physicalPitches = state.physicalHeldPitches
         val feedbackPitch = state.lastInputPitch
@@ -152,9 +151,9 @@ class TeachingVisualizerView @JvmOverloads constructor(
             val rect = geometry.second
             if (rect.bottom < laneTop || rect.top > heightF) return@forEach
 
-            val isNext = note.pitch in nextPitches
-            val isActive = note.pitch in activePitches
-            val isMatched = note.pitch in matchedPitches
+            val isNext = state.nextExpectedNotes.any { it.sameNoteAs(note) }
+            val isActive = state.activeNotes.any { it.sameNoteAs(note) }
+            val isMatched = note.matched
 
             barPaint.color = when {
                 isActive -> Color.rgb(66, 225, 255)
@@ -337,4 +336,9 @@ class TeachingVisualizerView @JvmOverloads constructor(
             }
         }
     }
+
+    private fun TeachingNoteState.sameNoteAs(other: TeachingNoteState): Boolean =
+        pitch == other.pitch &&
+            startTimeUs == other.startTimeUs &&
+            durationUs == other.durationUs
 }
