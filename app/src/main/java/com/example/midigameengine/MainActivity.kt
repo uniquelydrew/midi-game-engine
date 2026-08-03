@@ -56,9 +56,10 @@ class MainActivity : AppCompatActivity() {
             override fun createIntent(context: android.content.Context, input: Array<String>): Intent {
                 return Intent(Intent.ACTION_OPEN_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
+                    // Some document providers report .mid as application/octet-stream
+                    // and gray it out when EXTRA_MIME_TYPES is also supplied.
                     .setType("*/*")
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                    .putExtra(Intent.EXTRA_MIME_TYPES, input)
                     .apply {
                         controller.lastPickerUri()?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
                     }
@@ -207,13 +208,7 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Import a MIDI file"
             setOnClickListener {
                 importMidiLauncher.launch(
-                    arrayOf(
-                        "audio/midi",
-                        "audio/x-midi",
-                        "application/midi",
-                        "audio/mid",
-                        "application/octet-stream"
-                    )
+                    emptyArray()
                 )
             }
         }
