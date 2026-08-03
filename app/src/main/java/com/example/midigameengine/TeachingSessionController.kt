@@ -169,6 +169,7 @@ class TeachingSessionController(
                 resetSessionAt(playbackWindow.startUs)
             }
             transport.setRate(playbackSettings.normalizedSpeed)
+            playbackSynth.setRate(playbackSettings.normalizedSpeed)
             transport.seekTo(transport.positionNs() / 1000L)
             if (!playing) {
                 transport.resume()
@@ -198,6 +199,7 @@ class TeachingSessionController(
         synchronized(lock) {
             resetSessionAt(playbackWindow.startUs)
             transport.setRate(playbackSettings.normalizedSpeed)
+            playbackSynth.setRate(playbackSettings.normalizedSpeed)
             transport.resume()
             playing = true
             currentHeadline = "Restarted"
@@ -333,6 +335,7 @@ class TeachingSessionController(
         synchronized(lock) {
             playbackSettings = playbackSettings.copy(speed = speed)
             transport.setRate(playbackSettings.normalizedSpeed)
+            playbackSynth.setRate(playbackSettings.normalizedSpeed)
             preferences.savePlaybackSettings(playbackSettings)
         }
         emitState()
@@ -525,6 +528,7 @@ class TeachingSessionController(
             currentHeadline = "Loaded ${sourceLabel}"
             recalculatePlaybackWindow(resetToStart = true)
             transport.setRate(playbackSettings.normalizedSpeed)
+            playbackSynth.setRate(playbackSettings.normalizedSpeed)
             transport.seekTo(playbackWindow.startUs)
             playing = startPlaying
             physicalHeldPitches.clear()
@@ -532,6 +536,7 @@ class TeachingSessionController(
             lastInputCorrect = null
             inputFeedbackUntilUs = 0L
             playbackSynth.load(chart.events)
+            playbackSynth.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.seek(playbackWindow.startUs, startPlaying)
             if (persist && uri != null) {
                 val updated = preferences.library().filterNot { it.uri == uri.toString() } +

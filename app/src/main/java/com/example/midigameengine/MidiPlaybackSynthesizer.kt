@@ -16,6 +16,7 @@ class MidiPlaybackSynthesizer {
     private var events: List<ExpectedInput> = emptyList()
     private var eventIndex = 0
     private var lastTimeUs = 0L
+    private var playbackRate = 1.0
     private var playing = false
     private var released = false
     private val audioTrack: AudioTrack?
@@ -62,6 +63,12 @@ class MidiPlaybackSynthesizer {
         }
     }
 
+    fun setRate(rate: Double) {
+        synchronized(lock) {
+            playbackRate = rate.coerceIn(0.25, 2.0)
+        }
+    }
+
     fun sync(timeUs: Long, shouldPlay: Boolean) {
         synchronized(lock) {
             if (timeUs < lastTimeUs) {
@@ -86,7 +93,7 @@ class MidiPlaybackSynthesizer {
             voices.removeAll { it.endTimeUs <= timeUs }
             lastTimeUs = timeUs
             playing = shouldPlay
-            setAudioPlaying(playing)
+            resetAudioTrack(playing)
             lock.notifyAll()
         }
     }
@@ -101,6 +108,18 @@ class MidiPlaybackSynthesizer {
         }
     }
 
+    private fun resetAudioTrack(shouldPlay: Boolean) {
+        val track = audioTrack ?: return
+        if (released || track.state != AudioTrack.STATE_INITIALIZED) return
+        runCatching {
+            track.pause()
+            track.flush()
+            if (shouldPlay) track.play()
+        }.onFailure { error ->
+            AppDebugLogger.log("AudioTrack seek reset failed", error)
+        }
+    }
+
     private fun addEventsThrough(timeUs: Long) {
         while (eventIndex < events.size && events[eventIndex].targetTimeUs <= timeUs) {
             val event = events[eventIndex]
@@ -109,7 +128,11 @@ class MidiPlaybackSynthesizer {
                 voices += Voice(
                     pitch = event.pitch,
                     velocity = event.velocity,
-                    endTimeUs = endTimeUs
+                    endTimeUs = endTimeUs,
+                    remainingSamples = (
+                        event.durationUs.coerceAtLeast(100_000L).toDouble() /
+                            playbackRate * sampleRate / 1_000_000.0
+                        ).toInt().coerceAtLeast(1)
                 )
             }
             eventIndex++
@@ -134,16 +157,18 @@ class MidiPlaybackSynthesizer {
                 if (released) return
             }
 
+            val activeVoices = synchronized(lock) { voices.toList() }
             for (index in samples.indices) {
                 var value = 0.0
-                synchronized(lock) {
-                    voices.forEach { voice ->
+                activeVoices.forEach { voice ->
+                    if (voice.remainingSamples > 0) {
                         val frequency = 440.0 * 2.0.pow((voice.pitch - 69) / 12.0)
                         val fundamental = sin(voice.phase)
                         val harmonic = 0.35 * sin(voice.phase * 2.0)
                         value += (fundamental + harmonic) * voice.amplitude
                         voice.phase += 2.0 * PI * frequency / sampleRate
                         if (voice.phase > 2.0 * PI) voice.phase -= 2.0 * PI
+                        voice.remainingSamples--
                     }
                 }
                 samples[index] = (value.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
@@ -163,6 +188,7 @@ class MidiPlaybackSynthesizer {
         val pitch: Int,
         val velocity: Int,
         val endTimeUs: Long,
+        var remainingSamples: Int,
         var phase: Double = 0.0
     ) {
         val amplitude: Double

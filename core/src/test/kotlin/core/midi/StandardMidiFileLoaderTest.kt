@@ -54,6 +54,23 @@ class StandardMidiFileLoaderTest {
         assertEquals(500_000L, song.tempoChanges.single().microsecondsPerQuarterNote)
     }
 
+    @Test
+    fun `dense multi-track MIDI retains every note and remains chartable`() {
+        val trackCount = 8
+        val notesPerTrack = 500
+        val midiBytes = (0 until trackCount)
+            .map { trackIndex -> buildDenseTrack(trackIndex, notesPerTrack) }
+            .let { tracks -> buildMidiFile(tracks, format = 1) }
+
+        val song = StandardMidiFileLoader.load(midiBytes)
+        val chart = ChartGenerator.fromSong(song)
+
+        assertEquals(trackCount, song.tracks.size)
+        assertEquals(trackCount * notesPerTrack, song.tracks.sumOf { it.notes.size })
+        assertEquals(trackCount * notesPerTrack, chart.events.size)
+        assertEquals(chart.events.sortedBy { it.targetTimeUs }, chart.events)
+    }
+
     private fun singleTrackMidiBytes(): ByteArray {
         val track = buildTrack(
             notePitch = 60,
@@ -75,7 +92,12 @@ class StandardMidiFileLoaderTest {
     }
 
     private fun buildMidiFile(track: ByteArray, trackCount: Int): ByteArray {
-        return buildHeader(trackCount, format = 0) + buildChunk(track)
+        return buildMidiFile(listOf(track), format = 0)
+    }
+
+    private fun buildMidiFile(tracks: List<ByteArray>, format: Int): ByteArray {
+        return buildHeader(tracks.size, format) +
+            tracks.flatMap { buildChunk(it).asList() }.toByteArray()
     }
 
     private fun buildHeader(trackCount: Int, format: Int): ByteArray {
@@ -104,6 +126,19 @@ class StandardMidiFileLoaderTest {
         out.write(byteArrayOf(0x80.toByte(), notePitch.toByte(), 0x40))
         out.write(varLen(0))
         out.write(byteArrayOf(0xFF.toByte(), 0x2F.toByte(), 0x00))
+        return out.toByteArray()
+    }
+
+    private fun buildDenseTrack(trackIndex: Int, noteCount: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        repeat(noteCount) { noteIndex ->
+            val pitch = 36 + ((noteIndex + trackIndex) % 48)
+            out.write(varLen(if (noteIndex == 0) 0 else 24))
+            out.write(byteArrayOf(0x90.toByte(), pitch.toByte(), 0x64))
+            out.write(varLen(48))
+            out.write(byteArrayOf(0x80.toByte(), pitch.toByte(), 0x40))
+        }
+        out.write(byteArrayOf(0x00, 0xFF.toByte(), 0x2F.toByte(), 0x00))
         return out.toByteArray()
     }
 
