@@ -7,8 +7,9 @@ import core.model.TempoChange
 object ChartGenerator {
 
     fun fromTrack(track: SongTrack): PlayableChart {
-        val events = track.notes.map {
+        val events = track.notes.mapIndexed { index, it ->
             ExpectedInput(
+                id = index,
                 pitch = it.pitch,
                 targetTimeUs = it.startTick * 1000,
                 velocity = it.velocity
@@ -22,8 +23,9 @@ object ChartGenerator {
         ticksPerQuarterNote: Int,
         tempoUsPerQuarterNote: Long
     ): PlayableChart {
-        val events = track.notes.map {
+        val events = track.notes.mapIndexed { index, it ->
             ExpectedInput(
+                id = index,
                 pitch = it.pitch,
                 targetTimeUs = (it.startTick * tempoUsPerQuarterNote) / ticksPerQuarterNote.toLong(),
                 durationUs = (it.durationTicks * tempoUsPerQuarterNote) / ticksPerQuarterNote.toLong(),
@@ -43,11 +45,13 @@ object ChartGenerator {
             }
             addAll(song.tempoChanges)
         }
+        var eventId = 0
         return PlayableChart(
             selectedTracks
                 .flatMap { track ->
                     track.notes.map { note ->
                         ExpectedInput(
+                            id = eventId++,
                             pitch = note.pitch,
                             targetTimeUs = tickToMicros(
                                 note.startTick,

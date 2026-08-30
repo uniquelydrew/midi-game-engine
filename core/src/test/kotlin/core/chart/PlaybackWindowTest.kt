@@ -9,8 +9,8 @@ class PlaybackWindowTest {
     fun `trim window removes silence and preserves padding`() {
         val chart = PlayableChart(
             listOf(
-                ExpectedInput(60, 1_000_000L, 500_000L),
-                ExpectedInput(64, 3_000_000L, 250_000L)
+                ExpectedInput(pitch = 60, targetTimeUs = 1_000_000L, durationUs = 500_000L),
+                ExpectedInput(pitch = 64, targetTimeUs = 3_000_000L, durationUs = 250_000L)
             )
         )
 
@@ -31,7 +31,7 @@ class PlaybackWindowTest {
     @Test
     fun `trim window accepts adjustable padding`() {
         val chart = PlayableChart(
-            listOf(ExpectedInput(60, 1_000_000L, 500_000L))
+            listOf(ExpectedInput(pitch = 60, targetTimeUs = 1_000_000L, durationUs = 500_000L))
         )
 
         val window = PlaybackWindow.fromChart(chart, paddingUs = 250_000L)

@@ -2,8 +2,11 @@ package core.runtime
 
 import core.chart.PlayableChart
 import core.difficulty.DifficultyProfile
-import core.judgment.JudgmentEngine
+import core.judgment.InputFeedback
 import core.judgment.Judgment
+import core.judgment.JudgmentEngine
+import core.judgment.JudgmentResult
+import core.judgment.ScoreSummary
 import core.midi.MidiEvent
 import core.midi.NoteOn
 
@@ -13,7 +16,6 @@ class GameSessionWithDifficulty(
 ) {
 
     private val judgmentEngine = JudgmentEngine(difficulty.timing)
-
     private var combo: Int = 0
     private var maxCombo: Int = 0
 
@@ -21,32 +23,41 @@ class GameSessionWithDifficulty(
         judgmentEngine.load(chart.events)
     }
 
-    fun onInput(event: MidiEvent): Judgment? {
-        when (event) {
+    fun onInput(event: MidiEvent): InputFeedback? {
+        return when (event) {
             is NoteOn -> {
-                val result = judgmentEngine.onNote(event.pitch, event.timestampUs)
-                handleResult(result, event)
-                return result
+                val beforeCount = judgmentEngine.results().size
+                val result = judgmentEngine.onInput(event)
+                val finalized = judgmentEngine.results().drop(beforeCount)
+                finalized.forEach { handleFinalResult(it) }
+                println(
+                    "Input pitch=${event.pitch} time=${event.timestampUs} -> ${result?.message ?: "ignored"} | combo=$combo max=$maxCombo"
+                )
+                result
             }
-            else -> return null
+            else -> null
         }
     }
 
-    private fun handleResult(result: Judgment, event: NoteOn) {
-        when (result) {
+    fun advanceTo(timeUs: Long): List<JudgmentResult> {
+        val finalized = judgmentEngine.advanceTo(timeUs)
+        finalized.forEach { handleFinalResult(it) }
+        return finalized
+    }
+
+    fun results() = judgmentEngine.results()
+
+    fun scoreSummary(): ScoreSummary = judgmentEngine.scoreSummary()
+
+    private fun handleFinalResult(result: JudgmentResult) {
+        when (result.judgment) {
             Judgment.Perfect,
-            Judgment.Great,
             Judgment.Good -> {
                 combo++
                 if (combo > maxCombo) maxCombo = combo
             }
-            Judgment.Miss -> {
-                combo = 0
-            }
-        }
 
-        println(
-            "Input pitch=${event.pitch} time=${event.timestampUs} -> $result | combo=$combo max=$maxCombo"
-        )
+            Judgment.Miss -> combo = 0
+        }
     }
 }

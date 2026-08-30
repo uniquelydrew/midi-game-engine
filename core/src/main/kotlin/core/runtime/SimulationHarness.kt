@@ -15,7 +15,6 @@ class SimulationHarness(
     private val judgment = JudgmentEngine(
         TimingWindow(
             perfectUs = 50_000,
-            greatUs = 100_000,
             goodUs = 200_000
         )
     )

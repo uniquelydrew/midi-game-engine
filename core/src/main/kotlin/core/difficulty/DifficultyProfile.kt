@@ -16,7 +16,6 @@ object DifficultyPresets {
         name = "Beginner",
         timing = TimingWindow(
             perfectUs = 120_000,
-            greatUs = 220_000,
             goodUs = 350_000
         ),
         allowMisses = true,
@@ -28,7 +27,6 @@ object DifficultyPresets {
         name = "Intermediate",
         timing = TimingWindow(
             perfectUs = 70_000,
-            greatUs = 140_000,
             goodUs = 220_000
         ),
         allowMisses = true,
@@ -40,7 +38,6 @@ object DifficultyPresets {
         name = "Advanced",
         timing = TimingWindow(
             perfectUs = 40_000,
-            greatUs = 90_000,
             goodUs = 150_000
         ),
         allowMisses = false,

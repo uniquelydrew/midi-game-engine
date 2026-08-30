@@ -2,7 +2,9 @@ package core.runtime
 
 import core.chart.PlayableChart
 import core.judgment.JudgmentEngine
-import core.judgment.Judgment
+import core.judgment.InputFeedback
+import core.judgment.JudgmentResult
+import core.judgment.ScoreSummary
 
 class GameSession(
     private val judgmentEngine: JudgmentEngine
@@ -12,9 +14,13 @@ class GameSession(
         judgmentEngine.load(chart.events)
     }
 
-    fun onInput(pitch: Int, timeUs: Long): Judgment {
-        return judgmentEngine.onNote(pitch, timeUs)
+    fun onInput(event: core.midi.MidiEvent): InputFeedback? {
+        return judgmentEngine.onInput(event)
     }
 
-    fun results() = judgmentEngine.getResults()
+    fun advanceTo(timeUs: Long): List<JudgmentResult> = judgmentEngine.advanceTo(timeUs)
+
+    fun results() = judgmentEngine.results()
+
+    fun scoreSummary(): ScoreSummary = judgmentEngine.scoreSummary()
 }
