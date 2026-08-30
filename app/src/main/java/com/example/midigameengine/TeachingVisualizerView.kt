@@ -35,6 +35,9 @@ class TeachingVisualizerView @JvmOverloads constructor(
         color = Color.argb(200, 220, 220, 220)
         textSize = 13f * resources.displayMetrics.density
     }
+    private val hudBackdropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(8, 10, 18)
+    }
     private val keyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
@@ -86,7 +89,8 @@ class TeachingVisualizerView @JvmOverloads constructor(
         state = newState
         contentDescription = "MIDI visualizer. ${newState.headline}. " +
             "Next notes: ${newState.nextExpectedNotes.take(3).joinToString { PitchNames.name(it.pitch) }}. " +
-            "Combo ${newState.combo}."
+            "Score ${newState.liveScorePoints} points. Speed x${formatMultiplier(newState.scoreMultiplier)}. " +
+            "Song progress ${(newState.progress * 100f).toInt()} percent. Combo ${newState.combo}."
         postInvalidateOnAnimation()
     }
 
@@ -103,7 +107,8 @@ class TeachingVisualizerView @JvmOverloads constructor(
             (128f * density * zoomScale()).coerceAtMost(heightF * 0.28f)
         }.coerceAtLeast(64f * density)
         val keyboardTop = heightF - keyboardHeight - padding
-        val laneTop = padding * 2.2f
+        val hudHeight = (86f * density).coerceAtLeast(72f * density)
+        val laneTop = hudHeight + (10f * density)
         val pixelsPerSecond = (keyboardTop - laneTop).coerceAtLeast(1f) / 4f
         val currentTimeUs = state.playbackTimeUs
         val nextPitches = state.nextExpectedNotes.map { it.pitch }.toSet()
@@ -130,7 +135,8 @@ class TeachingVisualizerView @JvmOverloads constructor(
         canvas.drawRect(0f, 0f, widthF, keyboardTop, laneBackgroundPaint)
         canvas.drawRect(0f, keyboardTop, widthF, heightF, keyboardBackgroundPaint)
 
-        drawHeader(canvas, padding, laneTop - (10f * density), widthF - (padding * 2f))
+        canvas.drawRect(0f, 0f, widthF, laneTop, hudBackdropPaint)
+        drawScoreHud(canvas, padding, (18f * density), widthF - (padding * 2f), density)
         drawProgress(canvas, padding, keyboardTop - (8f * density), widthF - padding * 2f)
 
         state.notes.forEach { note ->
@@ -204,17 +210,22 @@ class TeachingVisualizerView @JvmOverloads constructor(
         else -> 1.0f
     }
 
-    private fun drawHeader(canvas: Canvas, left: Float, top: Float, maxWidth: Float) {
-        val header1 = state.sourceLabel
-        val header2 = "${state.deviceStatus} | ${state.headline}"
-        val header3 = "${state.trackSummary} | ${state.physicalProfileLabel} | Zoom ${state.keyboardZoomLabel}"
-        val header4 = "Visible ${PitchNames.name(state.visibleRangeFirstPitch)}-${PitchNames.name(state.visibleRangeLastPitch)}  Combo ${state.combo}  Progress ${(state.progress * 100f).toInt()}%"
+    private fun drawScoreHud(canvas: Canvas, left: Float, top: Float, maxWidth: Float, density: Float) {
+        val finalScore = state.finalScorePercent
+        val scoreLabel = if (finalScore != null) "Final ${finalScore}%" else "Score ${state.liveScorePoints}"
+        val bonusLabel = "Speed x${formatMultiplier(state.scoreMultiplier)}"
+        val footerLabel = "Song ${(state.progress * 100f).toInt()}%  Combo ${state.combo}"
 
-        canvas.drawText(fitText(header1, textPaint, maxWidth), left, top, textPaint)
-        canvas.drawText(fitText(header2, textPaintDim, maxWidth), left, top + 22f * resources.displayMetrics.density, textPaintDim)
-        canvas.drawText(fitText(header3, textPaintDim, maxWidth), left, top + 42f * resources.displayMetrics.density, textPaintDim)
-        canvas.drawText(fitText(header4, textPaintDim, maxWidth), left, top + 62f * resources.displayMetrics.density, textPaintDim)
+        textPaint.textSize = 18f * density
+        textPaint.color = Color.WHITE
+        canvas.drawText(scoreLabel, left, top + 20f * density, textPaint)
+
+        textPaintDim.textSize = 13f * density
+        canvas.drawText(bonusLabel, left, top + 40f * density, textPaintDim)
+        canvas.drawText(footerLabel, left, top + 58f * density, textPaintDim)
     }
+
+    private fun formatMultiplier(multiplier: Float): String = "%.2f".format(multiplier)
 
     private fun fitText(value: String, paint: Paint, maxWidth: Float): String {
         if (paint.measureText(value) <= maxWidth) return value

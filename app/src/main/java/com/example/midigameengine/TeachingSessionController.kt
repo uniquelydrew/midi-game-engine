@@ -7,8 +7,11 @@ import core.chart.ChartGenerator
 import core.chart.PlayableChart
 import core.chart.PlaybackSettings
 import core.chart.PlaybackWindow
-import core.judgment.JudgmentEngine
+import core.difficulty.DifficultyPresets
+import core.judgment.InputFeedback
 import core.judgment.Judgment
+import core.judgment.JudgmentResult
+import core.judgment.JudgmentEngine
 import core.judgment.TimingWindow
 import core.midi.ControlChange
 import core.midi.NoteOff
@@ -60,6 +63,7 @@ class TeachingSessionController(
     private var lastInputPitch: Int? = null
     private var lastInputCorrect: Boolean? = null
     private var inputFeedbackUntilUs = 0L
+    private var finalScorePercent: Int? = null
     private var deviceDescription: String? = null
     private val observedInputPitches = mutableSetOf<Int>()
     private var keyboardProfileMode = KeyboardProfileMode.AUTO
@@ -84,7 +88,7 @@ class TeachingSessionController(
     init {
         midiInput.setListener { event ->
             synchronized(lock) {
-                val judgment = session.onInput(event)
+                val feedback = session.onInput(event)
                 currentHeadline = when (event) {
                     is NoteOn -> {
                         physicalHeldPitches += event.pitch
@@ -93,13 +97,16 @@ class TeachingSessionController(
                             keyboardProfile = KeyboardProfileDetector.detect(deviceDescription, observedInputPitches)
                         }
                         lastInputPitch = event.pitch
-                        lastInputCorrect = judgment != null && judgment != Judgment.Miss
+                        lastInputCorrect = feedback != null && feedback.judgment != Judgment.Miss
                         inputFeedbackUntilUs = transport.positionNs() / 1000L + 450_000L
-                        "Pitch ${event.pitch} -> ${judgment?.name ?: "ignored"}"
+                        "Pitch ${event.pitch} -> ${feedback?.message ?: "ignored"}"
                     }
                     is NoteOff -> {
                         physicalHeldPitches -= event.pitch
-                        "Note off ${event.pitch}"
+                        lastInputPitch = event.pitch
+                        lastInputCorrect = feedback != null && feedback.judgment != Judgment.Miss
+                        inputFeedbackUntilUs = transport.positionNs() / 1000L + 450_000L
+                        "Note off ${event.pitch} -> ${feedback?.message ?: "ignored"}"
                     }
                     is ControlChange -> "CC ${event.controller} = ${event.value}"
                 }
@@ -535,6 +542,7 @@ class TeachingSessionController(
             lastInputPitch = null
             lastInputCorrect = null
             inputFeedbackUntilUs = 0L
+            finalScorePercent = null
             playbackSynth.load(chart.events)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.seek(playbackWindow.startUs, startPlaying)
@@ -566,6 +574,7 @@ class TeachingSessionController(
         lastInputPitch = null
         lastInputCorrect = null
         inputFeedbackUntilUs = 0L
+        finalScorePercent = null
         transport.seekTo(playbackWindow.clamp(positionUs))
     }
 
@@ -601,15 +610,11 @@ class TeachingSessionController(
     }
 
     private fun newSession(chart: PlayableChart): GameSessionStateful {
-        val judgmentEngine = JudgmentEngine(
-            TimingWindow(
-                perfectUs = 50_000L,
-                greatUs = 100_000L,
-                goodUs = 200_000L
-            )
-        )
+        val judgmentEngine = JudgmentEngine(DifficultyPresets.Beginner.timing)
         return GameSessionStateful(chart, judgmentEngine)
     }
+
+    private fun formatMultiplier(speed: Double): String = "%.2f".format(speed)
 
     private fun emitState() {
         val snapshot = synchronized(lock) {
@@ -619,9 +624,19 @@ class TeachingSessionController(
                 transport.seekTo(playbackWindow.endUs)
                 transport.pause()
                 playing = false
-                currentHeadline = "Complete"
+                val summary = session.scoreSummary()
+                finalScorePercent = summary.scorePercent
+                currentHeadline = "Complete - Final score ${finalScorePercent}% x${formatMultiplier(playbackSettings.normalizedSpeed)}"
             }
             val currentTimeUs = playbackWindow.clamp(transport.positionNs() / 1000L)
+            val finalized = session.advanceTo(currentTimeUs)
+            if (finalized.isNotEmpty()) {
+                val latest = finalized.last()
+                currentHeadline = latest.toHeadline()
+                lastInputPitch = latest.pitch
+                lastInputCorrect = latest.judgment != Judgment.Miss
+                inputFeedbackUntilUs = currentTimeUs + 450_000L
+            }
             playbackSynth.sync(currentTimeUs, playing)
             val notes = currentChart.events.map {
                 TeachingNoteState(
@@ -636,6 +651,8 @@ class TeachingSessionController(
             }
             val nextExpectedNotes = notes.filterNot { it.matched }.take(8)
             val chartLengthUs = playbackWindow.durationUs
+            val summary = session.scoreSummary()
+            val liveScorePoints = (summary.perfectCount * 100) + (summary.goodCount * 50)
             val progress = if (chartLengthUs <= 0L) {
                 0f
             } else {
@@ -649,6 +666,16 @@ class TeachingSessionController(
                 headline = currentHeadline,
                 playbackTimeUs = currentTimeUs,
                 chartLengthUs = chartLengthUs,
+                liveScorePoints = liveScorePoints,
+                scorePercent = summary.scorePercent,
+                finalScorePercent = finalScorePercent,
+                scoreMultiplier = playbackSettings.normalizedSpeed.toFloat(),
+                perfectCount = summary.perfectCount,
+                goodCount = summary.goodCount,
+                missCount = summary.missCount,
+                noInputCount = summary.noInputCount,
+                wrongKeyCount = summary.wrongKeyCount,
+                timingReleaseCount = summary.timingReleaseCount,
                 combo = session.getCombo(),
                 maxCombo = session.getMaxCombo(),
                 judgmentCount = session.getResults().size,
@@ -702,5 +729,18 @@ class TeachingSessionController(
         transport.pause()
         midiInput.stop()
         playbackSynth.release()
+    }
+
+    private fun JudgmentResult.toHeadline(): String {
+        return when (judgment) {
+            Judgment.Perfect -> "Perfect"
+            Judgment.Good -> "Good"
+            Judgment.Miss -> when (missReason) {
+                core.judgment.MissReason.NoInput -> "Miss: no input"
+                core.judgment.MissReason.WrongKey -> "Miss: wrong key"
+                core.judgment.MissReason.TimingRelease -> "Miss: timing"
+                null -> "Miss"
+            }
+        }
     }
 }

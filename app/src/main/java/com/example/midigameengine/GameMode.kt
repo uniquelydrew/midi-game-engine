@@ -10,6 +10,6 @@ enum class GameMode(
     ),
     GAME(
         label = "Game",
-        description = "Game rules are coming soon; this currently uses the teaching engine."
+        description = "Score your performance against the chart with timing, hold, and miss feedback."
     )
 }
