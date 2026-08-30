@@ -2,6 +2,10 @@
 
 An Android teaching application for practicing MIDI performances against a synchronized note highway, an on-screen keyboard, and a connected physical MIDI keyboard.
 
+## Documentation
+
+- [UX concept spec](docs/UX_CONCEPT_SPEC.md) - a human-readable and machine-friendly draft focused on the user experience.
+
 ## Current Workflow
 
 1. Import a Standard MIDI file with **Import MIDI**.
