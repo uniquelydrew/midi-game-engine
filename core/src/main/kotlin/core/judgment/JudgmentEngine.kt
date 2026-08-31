@@ -4,11 +4,13 @@ import core.chart.ExpectedInput
 import core.midi.MidiEvent
 import core.midi.NoteOff
 import core.midi.NoteOn
-import kotlin.math.abs
 
 class JudgmentEngine(
     private val timing: TimingWindow
 ) {
+
+    private val acquisitionPolicy = NoteAcquisitionPolicy(timing)
+    private val heldNotePolicy = HeldNoteJudgmentPolicy(timing)
 
     private data class NoteState(
         val note: ExpectedInput
@@ -17,6 +19,15 @@ class JudgmentEngine(
         var noteOffTimeUs: Long? = null
         var resolved: Boolean = false
     }
+
+    /** Runtime-only state, keyed by immutable chart note id. */
+    data class RuntimeNoteState(
+        val noteId: Int,
+        val matched: Boolean,
+        val judgment: Judgment?,
+        val missReason: MissReason?,
+        val missDetail: TimingMissDetail?
+    )
 
     private val notes = mutableListOf<NoteState>()
     private val results = mutableListOf<JudgmentResult>()
@@ -28,9 +39,7 @@ class JudgmentEngine(
         totalNotes = chartEvents.size
         chartEvents.forEachIndexed { index, event ->
             val id = if (event.id >= 0) event.id else index
-            notes += NoteState(
-                event.copy(id = id, matched = false, judgment = null, missReason = null, missDetail = null)
-            )
+            notes += NoteState(event.copy(id = id))
         }
     }
 
@@ -85,6 +94,17 @@ class JudgmentEngine(
 
     fun results(): List<JudgmentResult> = results.toList()
 
+    fun runtimeNoteStates(): Map<Int, RuntimeNoteState> = notes.associate { state ->
+        val result = results.lastOrNull { it.noteId == state.note.id }
+        state.note.id to RuntimeNoteState(
+            noteId = state.note.id,
+            matched = state.resolved,
+            judgment = result?.judgment,
+            missReason = result?.missReason,
+            missDetail = result?.missDetail
+        )
+    }
+
     fun scoreSummary(): ScoreSummary {
         val perfectCount = results.count { it.judgment == Judgment.Perfect }
         val goodCount = results.count { it.judgment == Judgment.Good }
@@ -113,14 +133,14 @@ class JudgmentEngine(
     }
 
     private fun onNoteOn(pitch: Int, timeUs: Long): InputFeedback? {
-        val samePitch = notes
-            .filter { !it.resolved && it.note.pitch == pitch && it.noteOnTimeUs == null }
-            .minByOrNull { abs(it.note.targetTimeUs - timeUs) }
+        val pending = notes.filter { !it.resolved && it.noteOnTimeUs == null }
+        val samePitch = acquisitionPolicy.matchingNote(pending.map { it.note }, pitch, timeUs)
+            ?.let { candidate -> pending.first { it.note.id == candidate.id } }
 
         if (samePitch != null) {
             samePitch.noteOnTimeUs = timeUs
             val startDelta = timeUs - samePitch.note.targetTimeUs
-            val tier = classify(startDelta)
+            val tier = heldNotePolicy.classify(startDelta)
 
             if (samePitch.note.durationUs <= 0L) {
                 val final = when (tier) {
@@ -159,10 +179,8 @@ class JudgmentEngine(
             }
         }
 
-        val wrongKeyTarget = notes
-            .filter { !it.resolved && it.noteOnTimeUs == null }
-            .filter { abs(it.note.targetTimeUs - timeUs) <= timing.goodUs }
-            .minByOrNull { abs(it.note.targetTimeUs - timeUs) }
+        val wrongKeyTarget = acquisitionPolicy.wrongKeyTarget(pending.map { it.note }, timeUs)
+            ?.let { candidate -> pending.first { it.note.id == candidate.id } }
 
         return if (wrongKeyTarget != null) {
             resolveMiss(
@@ -178,14 +196,13 @@ class JudgmentEngine(
     private fun onNoteOff(pitch: Int, timeUs: Long): InputFeedback? {
         val active = notes
             .filter { !it.resolved && it.note.pitch == pitch && it.noteOnTimeUs != null && it.noteOffTimeUs == null }
-            .minByOrNull { abs(it.noteOnTimeUs!! - it.note.targetTimeUs) }
+            .minByOrNull { kotlin.math.abs(it.noteOnTimeUs!! - it.note.targetTimeUs) }
             ?: return null
 
         active.noteOffTimeUs = timeUs
         val startDelta = active.noteOnTimeUs!! - active.note.targetTimeUs
         val endDelta = timeUs - active.note.endTimeUs
-        val startTier = classify(startDelta)
-        val endTier = classify(endDelta)
+        val startTier = heldNotePolicy.classify(startDelta)
 
         val result = when {
             active.note.durationUs <= 0L -> when (startTier) {
@@ -198,19 +215,10 @@ class JudgmentEngine(
                 )
             }
 
-            startTier == Judgment.Perfect && endTier == Judgment.Perfect -> {
-                resolveHit(active, Judgment.Perfect)
-            }
+            heldNotePolicy.finalJudgment(startDelta, endDelta) != Judgment.Miss ->
+                resolveHit(active, heldNotePolicy.finalJudgment(startDelta, endDelta))
 
-            startTier != Judgment.Miss || endTier != Judgment.Miss -> {
-                resolveHit(active, Judgment.Good)
-            }
-
-            else -> resolveMiss(
-                state = active,
-                reason = MissReason.TimingRelease,
-                detail = timingMissDetail(startDeltaUs = startDelta, endDeltaUs = endDelta),
-            )
+            else -> resolveMiss(active, MissReason.TimingRelease, timingMissDetail(startDelta, endDelta))
         }
 
         return result.toFeedback()
@@ -222,10 +230,6 @@ class JudgmentEngine(
     ): JudgmentResult {
         val note = state.note
         state.resolved = true
-        note.matched = true
-        note.judgment = judgment
-        note.missReason = null
-        note.missDetail = null
 
         val result = JudgmentResult(
             noteId = note.id,
@@ -249,10 +253,6 @@ class JudgmentEngine(
     ): JudgmentResult {
         val note = state.note
         state.resolved = true
-        note.matched = true
-        note.judgment = Judgment.Miss
-        note.missReason = reason
-        note.missDetail = detail
 
         val result = JudgmentResult(
             noteId = note.id,
@@ -287,15 +287,6 @@ class JudgmentEngine(
                 else -> "Miss"
             }
         )
-    }
-
-    private fun classify(deltaUs: Long): Judgment {
-        val absDelta = abs(deltaUs)
-        return when {
-            absDelta <= timing.perfectUs -> Judgment.Perfect
-            absDelta <= timing.goodUs -> Judgment.Good
-            else -> Judgment.Miss
-        }
     }
 
     private fun timingMissDetail(startDeltaUs: Long?, endDeltaUs: Long?): TimingMissDetail? {

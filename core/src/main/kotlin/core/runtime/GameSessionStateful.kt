@@ -5,6 +5,7 @@ import core.judgment.InputFeedback
 import core.judgment.Judgment
 import core.judgment.JudgmentEngine
 import core.judgment.JudgmentResult
+import core.judgment.JudgmentEngine.RuntimeNoteState
 import core.judgment.ScoreSummary
 import core.midi.MidiEvent
 
@@ -60,6 +61,8 @@ class GameSessionStateful(
     }
 
     fun getResults(): List<JudgmentResult> = judgmentEngine.results()
+
+    fun runtimeNoteStates(): Map<Int, RuntimeNoteState> = judgmentEngine.runtimeNoteStates()
 
     fun getCombo(): Int = combo
 

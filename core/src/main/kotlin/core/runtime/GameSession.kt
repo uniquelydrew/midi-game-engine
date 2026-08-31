@@ -22,5 +22,7 @@ class GameSession(
 
     fun results() = judgmentEngine.results()
 
+    fun runtimeNoteStates() = judgmentEngine.runtimeNoteStates()
+
     fun scoreSummary(): ScoreSummary = judgmentEngine.scoreSummary()
 }
