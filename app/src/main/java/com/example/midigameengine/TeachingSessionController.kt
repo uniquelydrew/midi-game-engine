@@ -173,7 +173,7 @@ class TeachingSessionController(
         AppDebugLogger.log("Play requested")
         synchronized(lock) {
             if (transport.positionNs() / 1000L >= playbackWindow.endUs) {
-                resetSessionAt(playbackWindow.startUs)
+                synchronizeSessionTo(playbackWindow.startUs, false)
             }
             transport.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
@@ -204,13 +204,12 @@ class TeachingSessionController(
     fun restart() {
         AppDebugLogger.log("Restart requested")
         synchronized(lock) {
-            resetSessionAt(playbackWindow.startUs)
+            synchronizeSessionTo(playbackWindow.startUs, true)
             transport.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
             transport.resume()
             playing = true
             currentHeadline = "Restarted"
-            playbackSynth.seek(playbackWindow.startUs, true)
         }
         emitState()
     }
@@ -352,9 +351,8 @@ class TeachingSessionController(
         synchronized(lock) {
             playbackSettings = playbackSettings.copy(autoTrimEnabled = enabled)
             preferences.savePlaybackSettings(playbackSettings)
-            recalculatePlaybackWindow(resetToStart = true)
-            resetSessionAt(playbackWindow.startUs)
-            playbackSynth.seek(playbackWindow.startUs, playing)
+            recalculatePlaybackWindow()
+            synchronizeSessionTo(playbackWindow.startUs, playing)
         }
         emitState()
     }
@@ -363,9 +361,8 @@ class TeachingSessionController(
         synchronized(lock) {
             playbackSettings = playbackSettings.copy(trimPaddingMs = paddingMs)
             preferences.savePlaybackSettings(playbackSettings)
-            recalculatePlaybackWindow(resetToStart = true)
-            resetSessionAt(playbackWindow.startUs)
-            playbackSynth.seek(playbackWindow.startUs, false)
+            recalculatePlaybackWindow()
+            synchronizeSessionTo(playbackWindow.startUs, false)
         }
         emitState()
     }
@@ -411,9 +408,7 @@ class TeachingSessionController(
         synchronized(lock) {
             val position = playbackWindow.startUs +
                 (playbackWindow.durationUs * fraction.coerceIn(0f, 1f)).toLong()
-            resetSessionAt(position)
-            transport.seekTo(position)
-            playbackSynth.seek(position, false)
+            synchronizeSessionTo(position, false)
         }
         emitState()
     }
@@ -428,8 +423,7 @@ class TeachingSessionController(
     fun seekRelative(deltaUs: Long) {
         synchronized(lock) {
             val target = playbackWindow.clamp(transport.positionNs() / 1000L + deltaUs)
-            resetSessionAt(target)
-            playbackSynth.seek(target, playing)
+            synchronizeSessionTo(target, playing)
             currentHeadline = if (deltaUs < 0L) {
                 "Seeking backward"
             } else {
@@ -533,10 +527,9 @@ class TeachingSessionController(
             session = newSession(chart)
             currentSourceLabel = sourceLabel
             currentHeadline = "Loaded ${sourceLabel}"
-            recalculatePlaybackWindow(resetToStart = true)
+            recalculatePlaybackWindow()
             transport.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
-            transport.seekTo(playbackWindow.startUs)
             playing = startPlaying
             physicalHeldPitches.clear()
             lastInputPitch = null
@@ -545,7 +538,7 @@ class TeachingSessionController(
             finalScorePercent = null
             playbackSynth.load(chart.events)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
-            playbackSynth.seek(playbackWindow.startUs, startPlaying)
+            synchronizeSessionTo(playbackWindow.startUs, startPlaying)
             if (persist && uri != null) {
                 val updated = preferences.library().filterNot { it.uri == uri.toString() } +
                     LibraryEntry(uri.toString(), sourceLabel, trackIds)
@@ -557,25 +550,27 @@ class TeachingSessionController(
         emitState()
     }
 
-    private fun recalculatePlaybackWindow(resetToStart: Boolean) {
+    private fun recalculatePlaybackWindow() {
         playbackWindow = if (playbackSettings.autoTrimEnabled) {
             PlaybackWindow.fromChart(currentChart, playbackSettings.trimPaddingUs)
         } else {
             PlaybackWindow.fullChart(currentChart, currentSong?.let { ChartGenerator.durationUs(it) })
         }
-        if (resetToStart) {
-            transport.seekTo(playbackWindow.startUs)
-        }
+        // Callers that request a reset immediately use synchronizeSessionTo so
+        // transport, judgment state, physical keys, and synth move together.
     }
 
-    private fun resetSessionAt(positionUs: Long) {
+    /** Keeps runtime judgment, transport, physical-key state, and synth at one timeline position. */
+    private fun synchronizeSessionTo(positionUs: Long, shouldPlay: Boolean) {
+        val target = playbackWindow.clamp(positionUs)
         session = newSession(currentChart)
         physicalHeldPitches.clear()
         lastInputPitch = null
         lastInputCorrect = null
         inputFeedbackUntilUs = 0L
         finalScorePercent = null
-        transport.seekTo(playbackWindow.clamp(positionUs))
+        transport.seekTo(target)
+        playbackSynth.seek(target, shouldPlay)
     }
 
     private fun trackChoices(song: SongModel, selectedIds: Set<String>): List<TrackChoice> {
@@ -638,12 +633,13 @@ class TeachingSessionController(
                 inputFeedbackUntilUs = currentTimeUs + 450_000L
             }
             playbackSynth.sync(currentTimeUs, playing)
+            val runtimeNotes = session.runtimeNoteStates()
             val notes = currentChart.events.map {
                 TeachingNoteState(
                     pitch = it.pitch,
                     startTimeUs = it.targetTimeUs,
                     durationUs = it.durationUs,
-                    matched = it.matched
+                    matched = runtimeNotes[it.id]?.matched == true
                 )
             }
             val activeNotes = notes.filter {
