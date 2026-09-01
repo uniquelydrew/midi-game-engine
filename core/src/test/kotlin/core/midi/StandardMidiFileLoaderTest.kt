@@ -43,6 +43,8 @@ class StandardMidiFileLoaderTest {
         assertEquals(60, note.pitch)
         assertEquals(500_000L, note.targetTimeUs)
         assertEquals(500_000L, note.durationUs)
+        assertEquals(100, note.velocity)
+        assertEquals(0, note.channel)
     }
 
     @Test
