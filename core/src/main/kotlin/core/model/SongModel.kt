@@ -23,5 +23,6 @@ data class SongNote(
     val pitch: Int,
     val velocity: Int,
     val startTick: Long,
-    val durationTicks: Long
+    val durationTicks: Long,
+    val channel: Int? = null
 )

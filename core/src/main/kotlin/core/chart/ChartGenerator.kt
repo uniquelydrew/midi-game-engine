@@ -12,7 +12,8 @@ object ChartGenerator {
                 id = index,
                 pitch = it.pitch,
                 targetTimeUs = it.startTick * 1000,
-                velocity = it.velocity
+                velocity = it.velocity,
+                channel = it.channel
             )
         }
         return PlayableChart(events)
@@ -29,7 +30,8 @@ object ChartGenerator {
                 pitch = it.pitch,
                 targetTimeUs = (it.startTick * tempoUsPerQuarterNote) / ticksPerQuarterNote.toLong(),
                 durationUs = (it.durationTicks * tempoUsPerQuarterNote) / ticksPerQuarterNote.toLong(),
-                velocity = it.velocity
+                velocity = it.velocity,
+                channel = it.channel
             )
         }.sortedBy { it.targetTimeUs }
 
@@ -67,7 +69,8 @@ object ChartGenerator {
                                 song.ticksPerQuarterNote,
                                 tempoMap
                             )).coerceAtLeast(1L),
-                            velocity = note.velocity
+                            velocity = note.velocity,
+                            channel = note.channel
                         )
                     }
                 }

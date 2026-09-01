@@ -83,7 +83,7 @@ object StandardMidiFileLoader {
         var runningStatus = -1
         val tempoChanges = mutableListOf<TempoChange>()
         var name: String? = null
-        val activeNotes = mutableMapOf<Int, MutableList<Long>>()
+        val activeNotes = mutableMapOf<Pair<Int, Int>, MutableList<ActiveNote>>()
         val notes = mutableListOf<SongNote>()
 
         trackLoop@ while (!reader.isEof()) {
@@ -130,6 +130,7 @@ object StandardMidiFileLoader {
                 }
                 status >= 0 -> {
                     val command = status and 0xF0
+                    val channel = status and 0x0F
                     val pitch = reader.readUnsignedByte()
                     val velocity = when (command) {
                         0xC0, 0xD0 -> 0
@@ -139,12 +140,13 @@ object StandardMidiFileLoader {
                     when (command) {
                         0x90 -> {
                             if (velocity > 0) {
-                                activeNotes.getOrPut(pitch) { mutableListOf() }.add(tick)
+                                activeNotes.getOrPut(channel to pitch) { mutableListOf() }
+                                    .add(ActiveNote(tick, velocity, channel))
                             } else {
-                                closeNote(activeNotes, notes, pitch, tick, velocity)
+                                closeNote(activeNotes, notes, channel, pitch, tick)
                             }
                         }
-                        0x80 -> closeNote(activeNotes, notes, pitch, tick, velocity)
+                        0x80 -> closeNote(activeNotes, notes, channel, pitch, tick)
                         else -> Unit
                     }
                 }
@@ -155,25 +157,29 @@ object StandardMidiFileLoader {
     }
 
     private fun closeNote(
-        activeNotes: MutableMap<Int, MutableList<Long>>,
+        activeNotes: MutableMap<Pair<Int, Int>, MutableList<ActiveNote>>,
         notes: MutableList<SongNote>,
+        channel: Int,
         pitch: Int,
-        endTick: Long,
-        velocity: Int
+        endTick: Long
     ) {
-        val starts = activeNotes[pitch] ?: return
-        val startTick = starts.removeLastOrNull() ?: return
+        val key = channel to pitch
+        val starts = activeNotes[key] ?: return
+        val start = starts.removeLastOrNull() ?: return
         if (starts.isEmpty()) {
-            activeNotes.remove(pitch)
+            activeNotes.remove(key)
         }
 
         notes += SongNote(
             pitch = pitch,
-            velocity = max(velocity, 1),
-            startTick = startTick,
-            durationTicks = max(endTick - startTick, 1L)
+            velocity = start.velocity,
+            startTick = start.tick,
+            durationTicks = max(endTick - start.tick, 1L),
+            channel = start.channel
         )
     }
+
+    private data class ActiveNote(val tick: Long, val velocity: Int, val channel: Int)
 
     private fun readInt(input: DataInputStream): Int {
         return (input.readUnsignedByte() shl 24) or
