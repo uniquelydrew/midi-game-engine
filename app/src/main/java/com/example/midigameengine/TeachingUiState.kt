@@ -10,6 +10,8 @@ data class TeachingNoteState(
 data class TeachingUiState(
     val sourceLabel: String,
     val gameMode: GameMode,
+    val experienceMode: ExperienceMode = ExperienceMode.PRACTICE,
+    val instrumentMode: InstrumentMode = InstrumentMode.KEYBOARD,
     val deviceStatus: String,
     val headline: String,
     val playbackTimeUs: Long,
@@ -55,6 +57,8 @@ data class TeachingUiState(
             return TeachingUiState(
                 sourceLabel = "No MIDI loaded",
                 gameMode = GameMode.TEACHING,
+                experienceMode = ExperienceMode.PRACTICE,
+                instrumentMode = InstrumentMode.KEYBOARD,
                 deviceStatus = "Waiting for MIDI device",
                 headline = "Loading...",
                 playbackTimeUs = 0L,

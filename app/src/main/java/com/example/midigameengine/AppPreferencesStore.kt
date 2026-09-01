@@ -149,6 +149,44 @@ class AppPreferencesStore(context: Context) {
         preferences.edit().putString(KEY_GAME_MODE, mode.name).apply()
     }
 
+    fun experienceMode(): ExperienceMode = runCatching {
+        ExperienceMode.valueOf(preferences.getString(KEY_EXPERIENCE_MODE, legacyExperienceMode().name)!!)
+    }.getOrDefault(legacyExperienceMode())
+
+    fun setExperienceMode(mode: ExperienceMode) {
+        preferences.edit().putString(KEY_EXPERIENCE_MODE, mode.name).apply()
+    }
+
+    fun instrumentMode(): InstrumentMode = runCatching {
+        InstrumentMode.valueOf(preferences.getString(KEY_INSTRUMENT_MODE, InstrumentMode.KEYBOARD.name)!!)
+    }.getOrDefault(InstrumentMode.KEYBOARD)
+
+    fun setInstrumentMode(mode: InstrumentMode) {
+        preferences.edit().putString(KEY_INSTRUMENT_MODE, mode.name).apply()
+    }
+
+    fun drumLayout(deviceId: String?): DrumPadLayout? {
+        val raw = preferences.getString("drum-layout.${deviceId ?: "default"}", null) ?: return null
+        return runCatching {
+            val json = JSONObject(raw)
+            DrumPadLayout(json.getString("id"), json.getString("name"), buildList {
+                val pads = json.getJSONArray("pads")
+                for (i in 0 until pads.length()) {
+                    val pad = pads.getJSONObject(i)
+                    add(DrumPadMapping(pad.getInt("index"), pad.getInt("pitch"), pad.optString("target").ifBlank { null }))
+                }
+            })
+        }.getOrNull()
+    }
+
+    fun saveDrumLayout(deviceId: String?, layout: DrumPadLayout) {
+        val pads = JSONArray()
+        layout.pads.forEach { pads.put(JSONObject().put("index", it.padIndex).put("pitch", it.midiPitch).put("target", it.logicalTargetId ?: "")) }
+        preferences.edit().putString("drum-layout.${deviceId ?: "default"}", JSONObject().put("id", layout.id).put("name", layout.name).put("pads", pads).toString()).apply()
+    }
+
+    private fun legacyExperienceMode() = if (gameMode() == GameMode.GAME) ExperienceMode.GAME else ExperienceMode.PRACTICE
+
     private companion object {
         const val KEY_LIBRARY = "library"
         const val KEY_LAST_URI = "last-uri"
@@ -159,5 +197,7 @@ class AppPreferencesStore(context: Context) {
         const val KEY_TRIM_PADDING_MS = "trim-padding-ms"
         const val KEY_KEYBOARD_ZOOM = "keyboard-zoom"
         const val KEY_GAME_MODE = "game-mode"
+        const val KEY_EXPERIENCE_MODE = "experience-mode"
+        const val KEY_INSTRUMENT_MODE = "instrument-mode"
     }
 }

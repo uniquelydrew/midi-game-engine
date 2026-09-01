@@ -127,7 +127,9 @@ class AndroidMidiInputReal(
         val props = info.properties
         val name = props.getString(MidiDeviceInfo.PROPERTY_NAME) ?: "Unknown device"
         val manufacturer = props.getString(MidiDeviceInfo.PROPERTY_MANUFACTURER)
-        return if (manufacturer.isNullOrBlank()) name else "$manufacturer $name"
+        val product = props.getString(MidiDeviceInfo.PROPERTY_PRODUCT)
+        return listOfNotNull(manufacturer?.takeIf { it.isNotBlank() }, product?.takeIf { it.isNotBlank() }, name)
+            .joinToString(" | ")
     }
 
     private fun scoreDevice(info: MidiDeviceInfo): Int {

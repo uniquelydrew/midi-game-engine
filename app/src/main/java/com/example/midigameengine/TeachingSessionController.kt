@@ -7,6 +7,15 @@ import core.chart.ChartGenerator
 import core.chart.PlayableChart
 import core.chart.PlaybackSettings
 import core.chart.PlaybackWindow
+import core.drums.DrumChartProjector
+import core.drums.DrumGameRulesEngine
+import core.drums.DrumPracticeRuntime
+import core.drums.DrumTimingWindow
+import core.input.DrumPadInputProfile
+import core.input.GeneralMidiDrumProfile
+import core.input.MidiLearnSession
+import core.input.MidiDeviceClassifier
+import core.input.MidiDeviceClass
 import core.difficulty.DifficultyPresets
 import core.judgment.InputFeedback
 import core.judgment.Judgment
@@ -66,6 +75,7 @@ class TeachingSessionController(
     private var finalScorePercent: Int? = null
     private var deviceDescription: String? = null
     private val observedInputPitches = mutableSetOf<Int>()
+    private val observedInputChannels = mutableSetOf<Int>()
     private var keyboardProfileMode = KeyboardProfileMode.AUTO
     private var keyboardProfile = KeyboardProfile.KEYS_88
     private var visibleRangeMode = preferences.layoutPreference(null).visibleRangeMode
@@ -75,6 +85,14 @@ class TeachingSessionController(
     private var playbackWindow = PlaybackWindow(0L, 0L)
     private var scrubbing = false
     private var gameMode = preferences.gameMode()
+    private var experienceMode = preferences.experienceMode()
+    private var instrumentMode = preferences.instrumentMode()
+    private var drumProfile: DrumPadInputProfile = GeneralMidiDrumProfile
+    private var drumRuntime: DrumPracticeRuntime? = null
+    private var drumGameRules: DrumGameRulesEngine? = null
+    private var drumUnmappedCount = 0
+    private val midiLearnSession = MidiLearnSession()
+    private var learningTargetId: String? = null
 
     private val frameRunnable = object : Runnable {
         override fun run() {
@@ -88,18 +106,37 @@ class TeachingSessionController(
     init {
         midiInput.setListener { event ->
             synchronized(lock) {
-                val feedback = session.onInput(event)
+                val learned = midiLearnSession.consume(event)
+                if (learned != null) {
+                    val targetId = learningTargetId
+                    val existing = preferences.drumLayout(deviceDescription)
+                    val pads = existing?.pads.orEmpty().filterNot { it.padIndex == learned.padIndex } +
+                        DrumPadMapping(learned.padIndex, learned.midiPitch, targetId)
+                    preferences.saveDrumLayout(deviceDescription, DrumPadLayout(existing?.id ?: "${deviceDescription ?: "default"}-drums", existing?.name ?: "Drum pads", pads))
+                    learningTargetId = null
+                    resetDrumRuntime()
+                    currentHeadline = "Pad ${learned.padIndex + 1} mapped to ${targetId ?: "custom"}"
+                    return@synchronized
+                }
+                val feedback = if (instrumentMode == InstrumentMode.KEYBOARD) session.onInput(event) else null
+                val drumFeedback = if (instrumentMode == InstrumentMode.DRUMS) drumRuntime?.onInput(event) else null
+                if (drumFeedback?.judgment != null) drumGameRules?.onJudgment(
+                    drumRuntime!!.results().last()
+                )
                 currentHeadline = when (event) {
                     is NoteOn -> {
                         physicalHeldPitches += event.pitch
                         observedInputPitches += event.pitch
+                        observedInputChannels += event.channel
                         if (keyboardProfileMode == KeyboardProfileMode.AUTO) {
                             keyboardProfile = KeyboardProfileDetector.detect(deviceDescription, observedInputPitches)
                         }
                         lastInputPitch = event.pitch
-                        lastInputCorrect = feedback != null && feedback.judgment != Judgment.Miss
+                        lastInputCorrect = if (instrumentMode == InstrumentMode.DRUMS) drumFeedback?.judgment?.name != "Miss" else feedback != null && feedback.judgment != Judgment.Miss
                         inputFeedbackUntilUs = transport.positionNs() / 1000L + 450_000L
-                        "Pitch ${event.pitch} -> ${feedback?.message ?: "ignored"}"
+                        if (instrumentMode == InstrumentMode.KEYBOARD && MidiDeviceClassifier.classify(deviceDescription, observedInputPitches, observedInputChannels) in setOf(MidiDeviceClass.DRUM_PAD, MidiDeviceClass.DRUM_KIT)) {
+                            "Drum input detected — choose Drums to use pad lanes"
+                        } else "Pitch ${event.pitch} -> ${drumFeedback?.message ?: feedback?.message ?: "ignored"}"
                     }
                     is NoteOff -> {
                         physicalHeldPitches -= event.pitch
@@ -389,6 +426,40 @@ class TeachingSessionController(
 
     fun gameMode(): GameMode = synchronized(lock) { gameMode }
 
+    fun setExperienceMode(mode: ExperienceMode) {
+        synchronized(lock) {
+            experienceMode = mode
+            preferences.setExperienceMode(mode)
+            gameMode = if (mode == ExperienceMode.GAME) GameMode.GAME else GameMode.TEACHING
+            preferences.setGameMode(gameMode)
+            resetDrumRuntime()
+        }
+        emitState()
+    }
+
+    fun setInstrumentMode(mode: InstrumentMode) {
+        synchronized(lock) {
+            instrumentMode = mode
+            preferences.setInstrumentMode(mode)
+            resetDrumRuntime()
+            currentHeadline = if (mode == InstrumentMode.DRUMS) "Drum mode: ${drumUnmappedCount} unmapped notes" else "Keyboard mode"
+        }
+        emitState()
+    }
+
+    fun experienceMode(): ExperienceMode = synchronized(lock) { experienceMode }
+    fun instrumentMode(): InstrumentMode = synchronized(lock) { instrumentMode }
+
+    fun beginDrumPadLearn(padIndex: Int, targetId: String) {
+        synchronized(lock) {
+            require(instrumentMode == InstrumentMode.DRUMS) { "Select Drum mode before learning pads" }
+            learningTargetId = targetId
+            midiLearnSession.awaitPad(padIndex)
+            currentHeadline = "Strike the pad you want to assign"
+        }
+        emitState()
+    }
+
     fun toggleAutoTrim() {
         setAutoTrimEnabled(!playbackSettings.autoTrimEnabled)
     }
@@ -525,6 +596,7 @@ class TeachingSessionController(
             }
             currentChart = chart
             session = newSession(chart)
+            resetDrumRuntime()
             currentSourceLabel = sourceLabel
             currentHeadline = "Loaded ${sourceLabel}"
             recalculatePlaybackWindow()
@@ -569,6 +641,7 @@ class TeachingSessionController(
         lastInputCorrect = null
         inputFeedbackUntilUs = 0L
         finalScorePercent = null
+        resetDrumRuntime()
         transport.seekTo(target)
         playbackSynth.seek(target, shouldPlay)
     }
@@ -609,6 +682,23 @@ class TeachingSessionController(
         return GameSessionStateful(chart, judgmentEngine)
     }
 
+    private fun resetDrumRuntime() {
+        val savedLayout = preferences.drumLayout(deviceDescription)
+        drumProfile = if (savedLayout == null) {
+            GeneralMidiDrumProfile
+        } else {
+            val mapped = savedLayout.pads.filter { it.logicalTargetId != null }
+            DrumPadInputProfile(GeneralMidiDrumProfile.displayTargets().map { target ->
+                val pitches = mapped.filter { it.logicalTargetId == target.id }.map { it.midiPitch }.toSet()
+                target.copy(midiPitches = pitches)
+            })
+        }
+        val projection = DrumChartProjector(drumProfile).project(currentChart)
+        drumUnmappedCount = projection.unmappedEventCount
+        drumRuntime = DrumPracticeRuntime(projection, drumProfile, DrumTimingWindow())
+        drumGameRules = if (experienceMode == ExperienceMode.GAME) DrumGameRulesEngine() else null
+    }
+
     private fun formatMultiplier(speed: Double): String = "%.2f".format(speed)
 
     private fun emitState() {
@@ -620,11 +710,15 @@ class TeachingSessionController(
                 transport.pause()
                 playing = false
                 val summary = session.scoreSummary()
-                finalScorePercent = summary.scorePercent
+                finalScorePercent = if (instrumentMode == InstrumentMode.DRUMS) {
+                    drumRuntime?.metrics()?.timingAccuracyPercent?.toInt() ?: 0
+                } else summary.scorePercent
                 currentHeadline = "Complete - Final score ${finalScorePercent}% x${formatMultiplier(playbackSettings.normalizedSpeed)}"
             }
             val currentTimeUs = playbackWindow.clamp(transport.positionNs() / 1000L)
             val finalized = session.advanceTo(currentTimeUs)
+            val drumFinalized = if (instrumentMode == InstrumentMode.DRUMS) drumRuntime?.advanceTo(currentTimeUs).orEmpty() else emptyList()
+            drumFinalized.forEach { drumGameRules?.onJudgment(it) }
             if (finalized.isNotEmpty()) {
                 val latest = finalized.last()
                 currentHeadline = latest.toHeadline()
@@ -648,7 +742,10 @@ class TeachingSessionController(
             val nextExpectedNotes = notes.filterNot { it.matched }.take(8)
             val chartLengthUs = playbackWindow.durationUs
             val summary = session.scoreSummary()
-            val liveScorePoints = (summary.perfectCount * 100) + (summary.goodCount * 50)
+            val drumMetrics = if (instrumentMode == InstrumentMode.DRUMS) drumRuntime?.metrics() else null
+            val drumGame = drumGameRules?.snapshot()
+            val liveScorePoints = drumGame?.score?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+                ?: (summary.perfectCount * 100) + (summary.goodCount * 50)
             val progress = if (chartLengthUs <= 0L) {
                 0f
             } else {
@@ -658,23 +755,25 @@ class TeachingSessionController(
             TeachingUiState(
                 sourceLabel = currentSourceLabel,
                 gameMode = gameMode,
+                experienceMode = experienceMode,
+                instrumentMode = instrumentMode,
                 deviceStatus = currentDeviceStatus,
                 headline = currentHeadline,
                 playbackTimeUs = currentTimeUs,
                 chartLengthUs = chartLengthUs,
                 liveScorePoints = liveScorePoints,
-                scorePercent = summary.scorePercent,
+                scorePercent = drumMetrics?.timingAccuracyPercent?.toInt() ?: summary.scorePercent,
                 finalScorePercent = finalScorePercent,
                 scoreMultiplier = playbackSettings.normalizedSpeed.toFloat(),
-                perfectCount = summary.perfectCount,
-                goodCount = summary.goodCount,
-                missCount = summary.missCount,
-                noInputCount = summary.noInputCount,
-                wrongKeyCount = summary.wrongKeyCount,
+                perfectCount = drumMetrics?.perfectHits ?: summary.perfectCount,
+                goodCount = drumMetrics?.let { it.goodHits + it.greatHits } ?: summary.goodCount,
+                missCount = drumMetrics?.misses ?: summary.missCount,
+                noInputCount = if (drumMetrics != null) drumRuntime?.results()?.count { it.missReason == core.drums.DrumMissReason.NoInput } ?: 0 else summary.noInputCount,
+                wrongKeyCount = if (drumMetrics != null) drumMetrics.wrongPadHits else summary.wrongKeyCount,
                 timingReleaseCount = summary.timingReleaseCount,
-                combo = session.getCombo(),
-                maxCombo = session.getMaxCombo(),
-                judgmentCount = session.getResults().size,
+                combo = drumGame?.combo ?: session.getCombo(),
+                maxCombo = drumGame?.maxCombo ?: session.getMaxCombo(),
+                judgmentCount = drumRuntime?.results()?.size?.takeIf { instrumentMode == InstrumentMode.DRUMS } ?: session.getResults().size,
                 progress = progress,
                 notes = notes,
                 nextExpectedNotes = nextExpectedNotes,

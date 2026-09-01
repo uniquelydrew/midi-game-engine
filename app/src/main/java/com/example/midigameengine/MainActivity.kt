@@ -16,6 +16,7 @@ import android.util.TypedValue
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import kotlin.math.roundToInt
@@ -32,6 +33,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var controller: TeachingSessionController
     private lateinit var visualizerView: TeachingVisualizerView
+    private lateinit var drumVisualizerView: DrumPadVisualizerView
+    private lateinit var visualizerHost: FrameLayout
     private lateinit var timelineSeekBar: SeekBar
     private lateinit var timeLabel: TextView
     private lateinit var playPauseButton: Button
@@ -170,6 +173,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        drumVisualizerView = DrumPadVisualizerView(this).apply {
+            isClickable = true
+            setOnClickListener { if (isPlaying) controller.pause() else controller.play() }
+            visibility = View.GONE
+        }
         controller = TeachingSessionController(
             context = this,
             onStateChanged = { state ->
@@ -177,6 +185,9 @@ class MainActivity : AppCompatActivity() {
                 latestState = state
                 AppDebugLogger.logState(state)
                 visualizerView.submitState(state)
+                drumVisualizerView.submitState(state)
+                visualizerView.visibility = if (state.instrumentMode == InstrumentMode.KEYBOARD) View.VISIBLE else View.GONE
+                drumVisualizerView.visibility = if (state.instrumentMode == InstrumentMode.DRUMS) View.VISIBLE else View.GONE
                 if (::timelineSeekBar.isInitialized && !userScrubbing) {
                     val duration = state.playbackEndUs - state.playbackStartUs
                     timelineSeekBar.progress = if (duration <= 0L) 0 else {
@@ -194,7 +205,7 @@ class MainActivity : AppCompatActivity() {
                         "Trim: Off"
                     }
                 }
-                if (::gameModeButton.isInitialized) gameModeButton.text = state.gameMode.label
+                if (::gameModeButton.isInitialized) gameModeButton.text = "${state.experienceMode.label} / ${state.instrumentMode.label}"
                 isPlaying = state.isPlaying
                 if (::playPauseButton.isInitialized) playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
             },
@@ -229,9 +240,9 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showLayoutDialog() }
         }
         gameModeButton = Button(this).apply {
-            text = "Teaching"
-            contentDescription = "Choose game mode"
-            setOnClickListener { showGameModeDialog() }
+            text = "Practice / Keyboard"
+            contentDescription = "Choose experience and instrument mode"
+            setOnClickListener { showSessionModeDialog() }
         }
 
         playPauseButton = Button(this).apply {
@@ -378,8 +389,12 @@ class MainActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
+            visualizerHost = FrameLayout(this@MainActivity).apply {
+                addView(visualizerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(drumVisualizerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            }
             addView(
-                visualizerView,
+                visualizerHost,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     0,
@@ -476,6 +491,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLayoutDialog() {
+        if (controller.instrumentMode() == InstrumentMode.DRUMS) {
+            showDrumLearnDialog()
+            return
+        }
         val options = arrayOf(
             "Auto detect",
             "25-key keyboard",
@@ -511,6 +530,20 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showDrumLearnDialog() {
+        val targets = core.input.GeneralMidiDrumProfile.displayTargets()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Configure pads: choose target")
+            .setItems(targets.map { it.label }.toTypedArray()) { _, targetIndex ->
+                val slots = (1..16).map { "Pad $it" }.toTypedArray()
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Choose physical pad slot")
+                    .setItems(slots) { _, padIndex -> controller.beginDrumPadLearn(padIndex, targets[targetIndex].id) }
+                    .show()
+            }
+            .show()
+    }
+
     private fun showGameModeDialog() {
         val modes = GameMode.values()
         val selected = modes.indexOf(controller.gameMode()).coerceAtLeast(0)
@@ -525,6 +558,23 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    private fun showSessionModeDialog() {
+        val experiences = ExperienceMode.values()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Experience")
+            .setSingleChoiceItems(experiences.map { it.label }.toTypedArray(), experiences.indexOf(controller.experienceMode())) { dialog, which ->
+                controller.setExperienceMode(experiences[which])
+                dialog.dismiss()
+                val instruments = InstrumentMode.values()
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Instrument")
+                    .setSingleChoiceItems(instruments.map { it.label }.toTypedArray(), instruments.indexOf(controller.instrumentMode())) { instrumentDialog, index ->
+                        controller.setInstrumentMode(instruments[index])
+                        instrumentDialog.dismiss()
+                    }.show()
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun showCustomRangeDialog() {
