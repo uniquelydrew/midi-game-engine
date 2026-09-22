@@ -72,10 +72,11 @@ Teaching mode keeps the original parsed MIDI file as the source of truth and der
 1. The user switches the mode selector to `Whack-a-MIDI`.
 2. The user connects a MIDI drum module.
 3. The user opens `Drum Kit` and maps pads by striking them, or loads General MIDI defaults.
-4. The user presses `Play`.
-5. A mapped drum target is highlighted.
-6. A matching strike records a hit and reaction time; a different mapped pad records a wrong-pad strike without consuming the target.
-7. An expired target records a miss and the next target is scheduled.
+4. The user chooses a difficulty preset that controls target lifetime and inter-target delay.
+5. The user presses `Play`.
+6. A mapped drum target is highlighted.
+7. A matching strike records a hit, reaction time, score, and combo; a different mapped pad records a wrong-pad strike without consuming the target and resets combo.
+8. An expired target records a miss, resets combo, and schedules the next target.
 
 ## 5. Screen Model
 
@@ -164,12 +165,17 @@ The visualizer is the main teaching surface. It shows:
 - A single physical note is not retained for multiple logical targets.
 - Mappings are stored per detected MIDI device, with a default fallback profile.
 - General MIDI defaults can be loaded explicitly.
+- The game surface exposes the latest raw NoteOn note, channel, and velocity as a live MIDI monitor.
 
 ### 6.7 Whack-a-MIDI Gameplay
 
 - Play starts or resumes the monotonic game transport.
 - Restart clears the current strike session and begins at time zero.
+- Difficulty presets adjust target lifetime and the inter-target delay without changing the logical kit mapping.
 - Targets are generated only from currently mapped pads.
+- Correct hits receive a base score plus a reaction-time bonus and bounded combo bonus.
+- Wrong-pad strikes and expired targets reset combo but do not subtract already-earned score.
+- Velocity is retained for diagnostics/game feedback but does not affect score.
 - NoteOff events do not judge drum strikes; strike gameplay resolves from NoteOn events.
 
 ## 7. Feedback Semantics
@@ -214,6 +220,8 @@ The drum surface communicates:
 - Remaining target time.
 - Hits, misses, and wrong-pad strikes.
 - Average and best reaction time.
+- Current score, combo, maximum combo, and selected difficulty.
+- Latest raw MIDI note/channel/velocity for hardware diagnostics.
 - Recent hit/wrong/miss feedback.
 
 ## 8. State Model
@@ -262,6 +270,7 @@ Preferences are stored locally on the device.
 - Keyboard zoom.
 - Game mode.
 - Drum-kit mappings keyed by detected MIDI device.
+- Whack-a-MIDI difficulty preset.
 
 ### 9.2 Layout Preferences
 

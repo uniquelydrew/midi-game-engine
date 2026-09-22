@@ -95,7 +95,15 @@ class WhackGameView(context: Context) : View(context) {
             canvas.drawText(reaction, widthF / 2f, 153f * density, secondaryTextPaint)
         }
 
-        val kitTop = 170f * density
+        val midiMonitor = state.lastMidiNote?.let { note ->
+            val channel = (state.lastMidiChannel ?: 0) + 1
+            val velocity = state.lastMidiVelocity ?: 0
+            "MIDI note $note   ch $channel   vel $velocity"
+        } ?: "MIDI monitor: waiting for input"
+        secondaryTextPaint.textSize = 12f * density
+        canvas.drawText(midiMonitor, widthF / 2f, 174f * density, secondaryTextPaint)
+
+        val kitTop = 192f * density
         val kitBottom = heightF - 24f * density
         val kitHeight = (kitBottom - kitTop).coerceAtLeast(1f)
         val pads = buildPadRects(widthF, kitTop, kitHeight)

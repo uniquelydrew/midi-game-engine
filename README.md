@@ -27,8 +27,9 @@ The app keeps the complete parsed MIDI document as its source of truth. Track se
 1. Switch the mode selector to **Whack-a-MIDI**.
 2. Connect a class-compliant MIDI drum module.
 3. Open **Drum Kit** and either map each pad by striking it or load the General MIDI defaults.
-4. Press **Play**.
-5. Strike the highlighted drum target before it expires. Hits, misses, wrong-pad strikes, velocity, and reaction times are tracked independently of the Teaching judgment engine.
+4. Choose a **Difficulty** preset: Relaxed, Standard, Fast, or Expert.
+5. Press **Play**.
+6. Strike the highlighted drum target before it expires. Hits, misses, wrong-pad strikes, velocity, reaction times, score, and combo are tracked independently of the Teaching judgment engine.
 
 Drum mappings are persisted per detected MIDI device. Target generation is constrained to mapped pads so the game does not request unavailable kit pieces.
 
@@ -68,6 +69,8 @@ Shared:
 - `NoteOn`, `NoteOff`, and `ControlChange` are normalized into shared core events.
 - Android-provided monotonic MIDI timestamps are preserved and converted into transport-relative time when available.
 - A drum-kit calibration maps physical MIDI notes to logical targets such as kick, snare, hi-hat, toms, crash, and ride.
+- The Whack-a-MIDI surface includes a live MIDI monitor showing the latest note, channel, and velocity for hardware diagnostics.
+- Difficulty changes target lifetime and the delay between targets. Scoring rewards a correct hit, faster reactions, and sustained combo; strike velocity is recorded but does not increase score.
 
 ## Building and Testing
 
@@ -109,8 +112,10 @@ Whack-a-MIDI:
 - Connect a MIDI drum module and confirm it is detected without keyboard-specific assumptions.
 - Map at least two pads with **Drum Kit** and confirm the mappings persist after reopening the app.
 - Start Whack-a-MIDI and confirm only mapped pads are selected as targets.
-- Confirm correct hits record reaction time and velocity.
-- Confirm wrong-pad strikes are counted without consuming the current target.
+- Confirm correct hits record reaction time and velocity and increase score/combo.
+- Confirm wrong-pad strikes are counted without consuming the current target and reset combo.
+- Change difficulty and confirm target lifetime/gap timing changes and persists across restart.
+- Confirm the live MIDI monitor updates for NoteOn input, including unmapped notes.
 - Confirm expired targets are recorded as misses.
 - Verify pause/resume and restart preserve or reset the game state as intended.
 

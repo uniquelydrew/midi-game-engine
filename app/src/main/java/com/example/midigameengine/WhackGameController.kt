@@ -41,6 +41,9 @@ class WhackGameController(
     }
     private var lastOutcome: StrikeOutcome? = null
     private var lastStrikeTarget: DrumTarget? = null
+    private var lastMidiNote: Int? = null
+    private var lastMidiChannel: Int? = null
+    private var lastMidiVelocity: Int? = null
     private var lastVelocity: Int? = null
     private var lastReactionTimeUs: Long? = null
 
@@ -58,6 +61,12 @@ class WhackGameController(
             var learned: Pair<DrumTarget, Int>? = null
 
             synchronized(lock) {
+                if (event is NoteOn) {
+                    lastMidiNote = event.pitch
+                    lastMidiChannel = event.channel
+                    lastMidiVelocity = event.velocity
+                }
+
                 val learnTarget = pendingLearnTarget
                 if (event is NoteOn && learnTarget != null) {
                     val base = profile ?: DrumKitProfile(
@@ -251,8 +260,15 @@ class WhackGameController(
 
     fun clearMappings() {
         synchronized(lock) {
-            preferences.clearDrumKitProfile(deviceDescription)
-            profile = null
+            profile = if (deviceDescription != null) {
+                DrumKitProfile(
+                    name = "${deviceDescription} drum kit",
+                    triggers = emptyList()
+                ).also { preferences.saveDrumKitProfile(deviceDescription, it) }
+            } else {
+                preferences.clearDrumKitProfile(null)
+                null
+            }
             session = null
             pendingLearnTarget = null
             if (transport.isRunning()) {
@@ -364,6 +380,9 @@ class WhackGameController(
                 bestReactionTimeMs = summary?.bestReactionTimeUs?.div(1_000L),
                 lastOutcome = lastOutcome,
                 lastStrikeTarget = lastStrikeTarget,
+                lastMidiNote = lastMidiNote,
+                lastMidiChannel = lastMidiChannel,
+                lastMidiVelocity = lastMidiVelocity,
                 lastVelocity = lastVelocity,
                 lastReactionTimeMs = lastReactionTimeUs?.div(1_000L),
                 learningTarget = pendingLearnTarget,

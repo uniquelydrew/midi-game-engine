@@ -80,6 +80,8 @@ object AppDebugLogger {
                 "difficulty=${state.difficultyLabel} score=${state.scorePoints} " +
                 "combo=${state.combo} maxCombo=${state.maxCombo} " +
                 "target=${state.target?.name ?: "none"} active=${state.targetActive} " +
+                "midiNote=${state.lastMidiNote ?: -1} midiChannel=${state.lastMidiChannel ?: -1} " +
+                "midiVelocity=${state.lastMidiVelocity ?: -1} " +
                 "hits=${state.hitCount} misses=${state.missCount} wrong=${state.wrongStrikeCount} " +
                 "avgMs=${state.averageReactionTimeMs ?: -1} bestMs=${state.bestReactionTimeMs ?: -1} " +
                 "learning=${state.learningTarget?.name ?: "none"}"
