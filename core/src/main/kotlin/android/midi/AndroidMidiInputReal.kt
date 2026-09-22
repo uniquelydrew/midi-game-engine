@@ -8,7 +8,9 @@ import android.media.midi.MidiOutputPort
 import android.media.midi.MidiReceiver
 import android.os.Handler
 import android.os.Looper
+import core.midi.ChannelMidiMessage
 import core.midi.ControlChange
+import core.midi.MidiByteStreamParser
 import core.midi.MidiEvent
 import core.midi.MidiInput
 import core.midi.NoteOff
@@ -27,6 +29,7 @@ class AndroidMidiInputReal(
     private var deviceInfo: MidiDeviceInfo? = null
     private var outputPort: MidiOutputPort? = null
     private var registered = false
+    private val streamParser = MidiByteStreamParser()
 
     private val midiManager by lazy {
         context.getSystemService(Context.MIDI_SERVICE) as MidiManager
@@ -133,6 +136,7 @@ class AndroidMidiInputReal(
         device?.close()
         device = null
         deviceInfo = null
+        streamParser.reset()
     }
 
     private fun reportStatus(message: String) {
@@ -167,32 +171,32 @@ class AndroidMidiInputReal(
         count: Int,
         timestampNs: Long
     ) {
-        if (count <= 0 || offset !in data.indices) return
-
-        val status = data[offset].toInt() and 0xFF
-        val command = status and 0xF0
-        val channel = status and 0x0F
-
-        val pitch = data.getOrNull(offset + 1)?.toInt()?.and(0xFF) ?: return
-        val velocity = data.getOrNull(offset + 2)?.toInt()?.and(0xFF) ?: 0
-
         val timeUs = if (timestampNs > 0L) {
             transport.positionAtClockNs(timestampNs) / 1_000L
         } else {
             transport.positionNs() / 1_000L
         }
 
-        val event: MidiEvent? = when (command) {
-            0x90 -> if (velocity > 0) {
-                NoteOn(timeUs, pitch, velocity, channel)
+        streamParser.feed(data, offset, count).forEach { message ->
+            toMidiEvent(message, timeUs)?.let { listener?.invoke(it) }
+        }
+    }
+
+    private fun toMidiEvent(
+        message: ChannelMidiMessage,
+        timestampUs: Long
+    ): MidiEvent? {
+        val value = message.data2 ?: 0
+        return when (message.command) {
+            0x90 -> if (value > 0) {
+                NoteOn(timestampUs, message.data1, value, message.channel)
             } else {
-                NoteOff(timeUs, pitch, channel)
+                NoteOff(timestampUs, message.data1, message.channel)
             }
-            0x80 -> NoteOff(timeUs, pitch, channel)
-            0xB0 -> ControlChange(timeUs, pitch, velocity, channel)
+            0x80 -> NoteOff(timestampUs, message.data1, message.channel)
+            0xB0 -> ControlChange(timestampUs, message.data1, value, message.channel)
             else -> null
         }
-
-        event?.let { listener?.invoke(it) }
     }
+
 }
