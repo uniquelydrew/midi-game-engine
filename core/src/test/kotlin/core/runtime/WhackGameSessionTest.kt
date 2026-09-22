@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class WhackGameSessionTest {
     private class SequenceSelector(
@@ -32,7 +33,7 @@ class WhackGameSessionTest {
     )
 
     @Test
-    fun `hit advances to the next target after configured delay`() {
+    fun `hit advances to the next target and accumulates score and combo`() {
         val session = WhackGameSession(
             profile = profile,
             selector = SequenceSelector(listOf(DrumTarget.SNARE, DrumTarget.KICK)),
@@ -46,9 +47,12 @@ class WhackGameSessionTest {
         val wrong = session.onInput(NoteOn(100_000L, pitch = 36, velocity = 100, channel = 9))
         assertEquals(StrikeOutcome.WRONG_TARGET, wrong?.outcome)
         assertEquals(DrumTarget.SNARE, session.currentTarget()?.target)
+        assertEquals(0, session.combo())
 
         val hit = session.onInput(NoteOn(200_000L, pitch = 38, velocity = 115, channel = 9))
         assertEquals(StrikeOutcome.HIT, hit?.outcome)
+        assertEquals(180, session.scorePoints())
+        assertEquals(1, session.combo())
 
         val next = assertNotNull(session.currentTarget())
         assertEquals(DrumTarget.KICK, next.target)
@@ -62,6 +66,40 @@ class WhackGameSessionTest {
         val summary = session.scoreSummary()
         assertEquals(2, summary.hitCount)
         assertEquals(1, summary.wrongStrikeCount)
+        assertEquals(380, session.scorePoints())
+        assertEquals(2, session.combo())
+        assertEquals(2, session.maxCombo())
+    }
+
+    @Test
+    fun `wrong strike and miss reset combo without reducing earned score`() {
+        val session = WhackGameSession(
+            profile = profile,
+            selector = SequenceSelector(listOf(DrumTarget.SNARE, DrumTarget.KICK, DrumTarget.SNARE)),
+            config = WhackGameConfig(
+                targetDurationUs = 1_000_000L,
+                interTargetDelayUs = 100_000L
+            )
+        )
+        session.start(0L)
+
+        session.onInput(NoteOn(100_000L, pitch = 38, velocity = 100, channel = 9))
+        assertEquals(1, session.combo())
+        val earned = session.scorePoints()
+        assertTrue(earned > 0)
+
+        val wrong = session.onInput(NoteOn(250_000L, pitch = 38, velocity = 100, channel = 9))
+        assertEquals(StrikeOutcome.WRONG_TARGET, wrong?.outcome)
+        assertEquals(0, session.combo())
+        assertEquals(earned, session.scorePoints())
+
+        val target = assertNotNull(session.currentTarget())
+        session.advanceTo(target.expiresAtUs + 1L)
+
+        assertEquals(0, session.combo())
+        assertEquals(earned, session.scorePoints())
+        assertEquals(1, session.scoreSummary().missCount)
+        assertEquals(1, session.maxCombo())
     }
 
     @Test
@@ -81,6 +119,7 @@ class WhackGameSessionTest {
         assertEquals(1, resolutions.size)
         assertEquals(StrikeOutcome.MISS, resolutions.single().outcome)
         assertEquals(1, session.scoreSummary().missCount)
+        assertEquals(0, session.combo())
         assertEquals(DrumTarget.KICK, session.currentTarget()?.target)
         assertEquals(1_100_000L, session.currentTarget()?.appearsAtUs)
     }

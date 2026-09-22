@@ -53,6 +53,7 @@ class WhackGameView(context: Context) : View(context) {
             newState.target?.takeIf { newState.targetActive }?.let {
                 append("Target ${it.label}. ")
             }
+            append("Score ${newState.scorePoints}, combo ${newState.combo}. ")
             append("Hits ${newState.hitCount}, misses ${newState.missCount}, wrong pads ${newState.wrongStrikeCount}.")
         }
         postInvalidateOnAnimation()
@@ -73,22 +74,28 @@ class WhackGameView(context: Context) : View(context) {
         canvas.drawText(state.deviceStatus, widthF / 2f, 61f * density, secondaryTextPaint)
 
         textPaint.textSize = 16f * density
-        canvas.drawText(state.headline, widthF / 2f, 88f * density, textPaint)
+        canvas.drawText(state.headline, widthF / 2f, 86f * density, textPaint)
+
+        val scoreLine = "Score ${state.scorePoints}   Combo x${state.combo}   ${state.difficultyLabel}"
+        textPaint.textSize = 15f * density
+        canvas.drawText(scoreLine, widthF / 2f, 111f * density, textPaint)
 
         val stats = "Hits ${state.hitCount}   Misses ${state.missCount}   Wrong ${state.wrongStrikeCount}"
-        secondaryTextPaint.textSize = 14f * density
-        canvas.drawText(stats, widthF / 2f, 112f * density, secondaryTextPaint)
+        secondaryTextPaint.textSize = 13f * density
+        canvas.drawText(stats, widthF / 2f, 133f * density, secondaryTextPaint)
 
         val reaction = buildString {
             state.averageReactionTimeMs?.let { append("Avg ${it}ms") }
             if (isNotEmpty() && state.bestReactionTimeMs != null) append("   ")
             state.bestReactionTimeMs?.let { append("Best ${it}ms") }
+            if (isNotEmpty() && state.maxCombo > 0) append("   ")
+            if (state.maxCombo > 0) append("Max combo x${state.maxCombo}")
         }
         if (reaction.isNotEmpty()) {
-            canvas.drawText(reaction, widthF / 2f, 133f * density, secondaryTextPaint)
+            canvas.drawText(reaction, widthF / 2f, 153f * density, secondaryTextPaint)
         }
 
-        val kitTop = 150f * density
+        val kitTop = 170f * density
         val kitBottom = heightF - 24f * density
         val kitHeight = (kitBottom - kitTop).coerceAtLeast(1f)
         val pads = buildPadRects(widthF, kitTop, kitHeight)

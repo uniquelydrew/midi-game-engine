@@ -5,6 +5,7 @@ import core.chart.PlaybackSettings
 import core.drums.DrumKitProfile
 import core.drums.DrumTarget
 import core.drums.DrumTrigger
+import core.runtime.WhackDifficulty
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardProfileMode
 import core.visualization.KeyboardZoom
@@ -213,6 +214,18 @@ class AppPreferencesStore(context: Context) {
         preferences.edit().putString(KEY_GAME_MODE, mode.name).apply()
     }
 
+    fun whackDifficulty(): WhackDifficulty {
+        return runCatching {
+            WhackDifficulty.valueOf(
+                preferences.getString(KEY_WHACK_DIFFICULTY, WhackDifficulty.STANDARD.name)!!
+            )
+        }.getOrDefault(WhackDifficulty.STANDARD)
+    }
+
+    fun setWhackDifficulty(difficulty: WhackDifficulty) {
+        preferences.edit().putString(KEY_WHACK_DIFFICULTY, difficulty.name).apply()
+    }
+
     private fun drumProfileKey(deviceKey: String?): String {
         return deviceKey?.let { "drums.$it.profile" } ?: "drums.default.profile"
     }
@@ -227,5 +240,6 @@ class AppPreferencesStore(context: Context) {
         const val KEY_TRIM_PADDING_MS = "trim-padding-ms"
         const val KEY_KEYBOARD_ZOOM = "keyboard-zoom"
         const val KEY_GAME_MODE = "game-mode"
+        const val KEY_WHACK_DIFFICULTY = "whack-difficulty"
     }
 }

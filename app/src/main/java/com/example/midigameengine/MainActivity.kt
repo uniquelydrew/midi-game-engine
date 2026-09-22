@@ -24,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import core.drums.DrumTarget
+import core.runtime.WhackDifficulty
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardZoom
 import core.visualization.PitchRange
@@ -46,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var optionsToggleButton: Button
     private lateinit var gameModeButton: Button
     private lateinit var drumKitButton: Button
+    private lateinit var difficultyButton: Button
     private var teachingSetupButtons: List<Button> = emptyList()
     private var userScrubbing = false
     private var currentMode = GameMode.TEACHING
@@ -278,6 +280,11 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Configure drum MIDI mappings"
             setOnClickListener { showDrumKitDialog() }
         }
+        difficultyButton = Button(this).apply {
+            text = whackController.currentDifficulty().label
+            contentDescription = "Choose Whack-a-MIDI difficulty"
+            setOnClickListener { showWhackDifficultyDialog() }
+        }
         teachingSetupButtons = listOf(importButton, trackButton, libraryButton, layoutButton)
 
         gameModeButton = Button(this).apply {
@@ -316,7 +323,8 @@ class MainActivity : AppCompatActivity() {
             restartButton,
             speedButton,
             trimButton,
-            drumKitButton
+            drumKitButton,
+            difficultyButton
         ).forEach(::styleButton)
 
         val exportLogsButton = Button(this).apply {
@@ -355,6 +363,7 @@ class MainActivity : AppCompatActivity() {
             addView(libraryButton, buttonParams())
             addView(layoutButton, buttonParams())
             addView(drumKitButton, buttonParams())
+            addView(difficultyButton, buttonParams())
         }
 
         val transportRow = LinearLayout(this).apply {
@@ -624,6 +633,28 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showWhackDifficultyDialog() {
+        val difficulties = WhackDifficulty.values()
+        val current = whackController.currentDifficulty()
+        val selected = difficulties.indexOf(current).coerceAtLeast(0)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Whack-a-MIDI difficulty")
+            .setSingleChoiceItems(
+                difficulties.map { difficulty ->
+                    "${difficulty.label} — ${difficulty.targetDurationUs / 1_000L}ms target"
+                }.toTypedArray(),
+                selected
+            ) { dialog, which ->
+                val difficulty = difficulties[which]
+                whackController.setDifficulty(difficulty)
+                difficultyButton.text = difficulty.label
+                dialog.dismiss()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
     private fun showDrumLearnDialog(target: DrumTarget) {
         drumLearnDialog?.dismiss()
         whackController.beginLearn(target)
@@ -690,6 +721,8 @@ class MainActivity : AppCompatActivity() {
         timelineRow.visibility = if (game) View.GONE else View.VISIBLE
         teachingSetupButtons.forEach { it.visibility = if (game) View.GONE else View.VISIBLE }
         drumKitButton.visibility = if (game) View.VISIBLE else View.GONE
+        difficultyButton.visibility = if (game) View.VISIBLE else View.GONE
+        difficultyButton.text = whackController.currentDifficulty().label
         speedButton.visibility = if (game) View.GONE else View.VISIBLE
         trimButton.visibility = if (game) View.GONE else View.VISIBLE
         gameModeButton.text = mode.label

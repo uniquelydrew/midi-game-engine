@@ -77,6 +77,8 @@ object AppDebugLogger {
         log(
             "WHACK_STATE headline=${state.headline} playing=${state.isPlaying} " +
                 "device=${state.deviceStatus} profile=${state.profileName ?: "none"} " +
+                "difficulty=${state.difficultyLabel} score=${state.scorePoints} " +
+                "combo=${state.combo} maxCombo=${state.maxCombo} " +
                 "target=${state.target?.name ?: "none"} active=${state.targetActive} " +
                 "hits=${state.hitCount} misses=${state.missCount} wrong=${state.wrongStrikeCount} " +
                 "avgMs=${state.averageReactionTimeMs ?: -1} bestMs=${state.bestReactionTimeMs ?: -1} " +

@@ -59,6 +59,9 @@ class WhackGameSession(
     private var nextTargetId = 1L
     private var previousTarget: DrumTarget? = null
     private var started = false
+    private var scorePoints = 0
+    private var combo = 0
+    private var maxCombo = 0
 
     init {
         require(profile.availableTargets().isNotEmpty()) {
@@ -95,8 +98,13 @@ class WhackGameSession(
         val strike = mapper.map(event) ?: return null
         val feedback = judgmentEngine.onStrike(strike)
 
-        if (feedback?.outcome == StrikeOutcome.HIT) {
-            scheduleTarget(strike.timestampUs + config.interTargetDelayUs)
+        when (feedback?.outcome) {
+            StrikeOutcome.HIT -> {
+                registerHit(feedback)
+                scheduleTarget(strike.timestampUs + config.interTargetDelayUs)
+            }
+            StrikeOutcome.WRONG_TARGET -> combo = 0
+            StrikeOutcome.MISS, null -> Unit
         }
 
         return feedback
@@ -109,6 +117,7 @@ class WhackGameSession(
         while (true) {
             val miss = judgmentEngine.advanceTo(timeUs) ?: break
             resolved += miss
+            combo = 0
             scheduleTarget(miss.target.expiresAtUs + config.interTargetDelayUs)
         }
         return resolved
@@ -117,6 +126,25 @@ class WhackGameSession(
     fun results(): List<StrikeResolution> = judgmentEngine.results()
 
     fun scoreSummary(): StrikeScoreSummary = judgmentEngine.scoreSummary()
+
+    fun scorePoints(): Int = scorePoints
+
+    fun combo(): Int = combo
+
+    fun maxCombo(): Int = maxCombo
+
+    private fun registerHit(feedback: StrikeFeedback) {
+        combo += 1
+        if (combo > maxCombo) maxCombo = combo
+
+        val reactionTimeUs = feedback.reactionTimeUs ?: config.targetDurationUs
+        val remainingUs = (config.targetDurationUs - reactionTimeUs)
+            .coerceIn(0L, config.targetDurationUs)
+        val speedBonus = ((remainingUs * 100L) / config.targetDurationUs).toInt()
+        val comboBonus = ((combo - 1).coerceAtMost(20)) * 5
+
+        scorePoints += 100 + speedBonus + comboBonus
+    }
 
     private fun scheduleTarget(appearsAtUs: Long) {
         val target = targetSelector.nextTarget(previousTarget)

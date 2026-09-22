@@ -7,6 +7,7 @@ import core.drums.DrumKitProfiles
 import core.drums.DrumTarget
 import core.drums.DrumTrigger
 import core.midi.NoteOn
+import core.runtime.WhackDifficulty
 import core.runtime.WhackGameSession
 import core.strike.StrikeOutcome
 import core.time.SystemClock
@@ -29,6 +30,7 @@ class WhackGameController(
     private var deviceDescription: String? = null
     private var deviceStatus = "Waiting for a MIDI input device"
     private var profile: DrumKitProfile? = preferences.drumKitProfile(null)
+    private var difficulty: WhackDifficulty = preferences.whackDifficulty()
     private var session: WhackGameSession? = createSessionAt(0L)
     private var pendingLearnTarget: DrumTarget? = null
 
@@ -266,6 +268,32 @@ class WhackGameController(
 
     fun currentProfile(): DrumKitProfile? = synchronized(lock) { profile }
 
+    fun currentDifficulty(): WhackDifficulty = synchronized(lock) { difficulty }
+
+    fun setDifficulty(newDifficulty: WhackDifficulty) {
+        synchronized(lock) {
+            if (difficulty == newDifficulty) return@synchronized
+            val wasPlaying = playing
+            if (transport.isRunning()) {
+                transport.pause()
+            }
+            difficulty = newDifficulty
+            preferences.setWhackDifficulty(newDifficulty)
+            session = createSessionAt(transport.positionNs() / 1_000L)
+            resetFeedback()
+            playing = wasPlaying && session != null
+            if (playing) {
+                transport.resume()
+            }
+            headline = if (session == null) {
+                "Configure a drum kit before playing"
+            } else {
+                "${newDifficulty.label} difficulty"
+            }
+        }
+        emitState()
+    }
+
     fun release() {
         if (released) return
         released = true
@@ -280,7 +308,10 @@ class WhackGameController(
     private fun createSessionAt(timeUs: Long): WhackGameSession? {
         val currentProfile = profile ?: return null
         if (currentProfile.availableTargets().isEmpty()) return null
-        return WhackGameSession(currentProfile).also { it.start(timeUs) }
+        return WhackGameSession(
+            profile = currentProfile,
+            config = difficulty.config()
+        ).also { it.start(timeUs) }
     }
 
     private fun resetFeedback() {
@@ -322,6 +353,10 @@ class WhackGameController(
                 targetRemainingMs = currentTarget
                     ?.takeIf { targetActive }
                     ?.let { ((it.expiresAtUs - currentTimeUs).coerceAtLeast(0L)) / 1_000L },
+                difficultyLabel = difficulty.label,
+                scorePoints = session?.scorePoints() ?: 0,
+                combo = session?.combo() ?: 0,
+                maxCombo = session?.maxCombo() ?: 0,
                 hitCount = summary?.hitCount ?: 0,
                 missCount = summary?.missCount ?: 0,
                 wrongStrikeCount = summary?.wrongStrikeCount ?: 0,
