@@ -95,7 +95,10 @@ class MainActivity : AppCompatActivity() {
             if (uri == null) return@registerForActivityResult
             runCatching {
                 contentResolver.openOutputStream(uri)?.use { output: OutputStream ->
-                    output.write(AppDebugLogger.exportText(latestState).toByteArray(Charsets.UTF_8))
+                    output.write(
+                        AppDebugLogger.exportText(latestState, latestWhackState)
+                            .toByteArray(Charsets.UTF_8)
+                    )
                 } ?: error("Unable to open export destination")
                 AppDebugLogger.log("Diagnostic export completed: $uri")
             }.onFailure { error ->
@@ -224,6 +227,7 @@ class MainActivity : AppCompatActivity() {
             onStateChanged = { state ->
                 if (!activityActive || currentMode != GameMode.GAME) return@WhackGameController
                 latestWhackState = state
+                AppDebugLogger.logState(state)
                 whackGameView.submitState(state)
                 isPlaying = state.isPlaying
                 if (::playPauseButton.isInitialized) {
@@ -643,6 +647,9 @@ class MainActivity : AppCompatActivity() {
                 if (activityActive) controller.stop()
             }
             GameMode.GAME -> {
+                drumLearnDialog?.dismiss()
+                drumLearnDialog = null
+                whackController.cancelLearn()
                 whackController.pause()
                 if (activityActive) whackController.stop()
             }

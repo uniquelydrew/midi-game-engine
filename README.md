@@ -1,54 +1,73 @@
 # MIDI Game Engine
 
-An Android teaching application for practicing MIDI performances against a synchronized note highway, an on-screen keyboard, and a connected physical MIDI keyboard.
+An Android MIDI practice and game application with two active modes:
+
+- **Teaching** — practice Standard MIDI files against a synchronized note highway, on-screen keyboard, synthesized playback, and physical MIDI input.
+- **Whack-a-MIDI** — connect a MIDI drum kit and strike the highlighted drum target as quickly and accurately as possible.
 
 ## Documentation
 
-- [UX concept spec](docs/UX_CONCEPT_SPEC.md) - a human-readable and machine-friendly draft focused on the user experience.
+- [UX concept spec](docs/UX_CONCEPT_SPEC.md) - product and interaction model.
+- [Debugging](docs/DEBUGGING.md) - diagnostic workflow and log export.
+- [Play Store release](docs/PLAY_STORE_RELEASE.md) - release build and signing process.
 
-## Current Workflow
+## Teaching Workflow
 
 1. Import a Standard MIDI file with **Import MIDI**.
 2. Select one or more tracks when a file contains multiple tracks.
-3. Use **Tracks** to change the teaching selection after import.
-4. Toggle between **Teaching** and **Game** mode; Game mode currently references the teaching engine while its rules are developed.
-5. Use **Layout** to choose the physical keyboard profile and visible MIDI range.
-6. Press **Play**, scrub the timeline, adjust speed, and practice against the visualizer.
-7. Reopen imported files from **Library**. The source MIDI, selected tracks, layout, trim preference, and playback speed are persisted locally.
+3. Use **Track** to change the teaching selection after import.
+4. Use **Layout** to choose the physical keyboard profile and visible MIDI range.
+5. Press **Play**, scrub the timeline, adjust speed, and practice against the visualizer.
+6. Reopen imported files from **Library**. The source MIDI, selected tracks, layout, trim preference, and playback speed are persisted locally.
 
 The app keeps the complete parsed MIDI document as its source of truth. Track selection creates a derived playable chart without replacing the original MIDI data.
+
+## Whack-a-MIDI Workflow
+
+1. Switch the mode selector to **Whack-a-MIDI**.
+2. Connect a class-compliant MIDI drum module.
+3. Open **Drum Kit** and either map each pad by striking it or load the General MIDI defaults.
+4. Press **Play**.
+5. Strike the highlighted drum target before it expires. Hits, misses, wrong-pad strikes, velocity, and reaction times are tracked independently of the Teaching judgment engine.
+
+Drum mappings are persisted per detected MIDI device. Target generation is constrained to mapped pads so the game does not request unavailable kit pieces.
 
 ## Architecture
 
 ```text
-Standard MIDI file
-        |
-        v
-SongModel (all tracks, names, tempo changes)
-        |
-        +--> selected track IDs --> PlayableChart
-        |                              |
-        |                              +--> Judgment engine
-        |                              +--> Note highway and keyboard
-        |                              +--> Android audio synthesizer
-        |
-        +--> AppPreferencesStore (library and session settings)
-        +--> Transport (play, pause, seek, rate)
+                           +----------------------+
+Standard MIDI file ------>| Teaching pipeline    |
+                           | SongModel             |
+Physical MIDI input ------>| PlayableChart         |
+            |              | JudgmentEngine        |
+            |              +----------------------+
+            |
+            +------------->+----------------------+
+                           | Whack-a-MIDI pipeline |
+                           | DrumKitProfile        |
+                           | DrumInputMapper       |
+                           | WhackGameSession      |
+                           | StrikeJudgmentEngine  |
+                           +----------------------+
+
+Shared:
+- AndroidMidiInputReal
+- MidiEvent
+- monotonic Transport/Clock
+- local preferences
 ```
 
 ### Modules
 
-- `core`: MIDI parsing, song/chart models, timing, judgment, transport, and visualization geometry.
-- `app`: Android UI, MIDI device integration, persistence, audio playback, diagnostics, and the custom visualizer.
+- `core`: MIDI parsing, chart models, timing, teaching judgment, drum mapping, strike judgment, game runtime, and visualization geometry.
+- `app`: Android UI, MIDI device integration, persistence, playback, diagnostics, Teaching visualization, and Whack-a-MIDI visualization/controller.
 
-### Playback behavior
+### MIDI Input Behavior
 
-- Auto-trim removes leading and trailing silence non-destructively using a 50 ms note boundary pad.
-- Auto-trim padding can be set to `0`, `25`, `50`, `100`, `250`, or `500 ms` from the Trim control.
-- Playback speed ranges from `0.25x` to `2.0x` in `0.05x` increments.
-- Keyboard zoom is available as Compact, Standard, or Large; it changes the keyboard strip size without changing pitch mapping.
-- Seeking resets judgment state and synchronizes the visualizer and audio event cursor.
-- Physical MIDI input remains independent from synthesized Android playback.
+- Android MIDI device discovery is instrument-neutral; USB hardware is preferred without keyboard- or brand-specific scoring.
+- `NoteOn`, `NoteOff`, and `ControlChange` are normalized into shared core events.
+- Android-provided monotonic MIDI timestamps are preserved and converted into transport-relative time when available.
+- A drum-kit calibration maps physical MIDI notes to logical targets such as kick, snare, hi-hat, toms, crash, and ride.
 
 ## Building and Testing
 
@@ -75,15 +94,28 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Android Verification Checklist
 
+Teaching:
+
 - Import a single-track `.mid` file.
 - Import a multi-track file and select tracks.
 - Change tracks after import and confirm the chart changes without replacing the source file.
 - Rotate portrait to landscape and back while paused and while playing.
 - Scrub, restart, change playback speed, and verify audio and visuals remain synchronized.
-- Reopen the file from **Library** and confirm the selected tracks are restored without reopening the selector.
+- Reopen the file from **Library** and confirm the selected tracks are restored.
 - Connect a MIDI keyboard and verify physical notes, expected notes, and judgment feedback use the same pitch mapping.
-- Use **Export Logs** after any crash or unexpected behavior.
+
+Whack-a-MIDI:
+
+- Connect a MIDI drum module and confirm it is detected without keyboard-specific assumptions.
+- Map at least two pads with **Drum Kit** and confirm the mappings persist after reopening the app.
+- Start Whack-a-MIDI and confirm only mapped pads are selected as targets.
+- Confirm correct hits record reaction time and velocity.
+- Confirm wrong-pad strikes are counted without consuming the current target.
+- Confirm expired targets are recorded as misses.
+- Verify pause/resume and restart preserve or reset the game state as intended.
+
+Use **Export Logs** after any crash or unexpected behavior.
 
 ## Project Status
 
-This is an actively developed MVP. The current implementation prioritizes the teaching loop, complete MIDI retention, track selection, responsive keyboard visualization, synchronized local audio, and diagnostic capture.
+This is an actively developed MVP. Teaching mode is functional, and Whack-a-MIDI now has an independent drum-input game loop and Android surface. Hardware validation across multiple drum modules and further gameplay tuning remain in progress.
