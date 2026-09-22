@@ -17,6 +17,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.ScrollView
 import android.widget.TextView
 import kotlin.math.roundToInt
 import androidx.activity.result.contract.ActivityResultContract
@@ -41,6 +42,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timelineRow: LinearLayout
     private lateinit var timeLabel: TextView
     private lateinit var playPauseButton: Button
+    private lateinit var restartButton: Button
+    private lateinit var quickPlayPauseButton: Button
     private lateinit var speedButton: Button
     private lateinit var trimButton: Button
     private lateinit var optionsPanel: View
@@ -232,9 +235,7 @@ class MainActivity : AppCompatActivity() {
                 AppDebugLogger.logState(state)
                 whackGameView.submitState(state)
                 isPlaying = state.isPlaying
-                if (::playPauseButton.isInitialized) {
-                    playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
-                }
+                if (::playPauseButton.isInitialized) renderWhackControls(state)
                 if (::gameModeButton.isInitialized) gameModeButton.text = currentMode.label
             },
             onMappingLearned = { target, note ->
@@ -298,7 +299,7 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Play or pause the active mode"
             setOnClickListener { togglePlayPause() }
         }
-        val restartButton = Button(this).apply {
+        restartButton = Button(this).apply {
             text = "Restart"
             contentDescription = "Restart current session"
             setOnClickListener { restartActiveSession() }
@@ -336,7 +337,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val quickPlayPauseButton = Button(this).apply {
+        quickPlayPauseButton = Button(this).apply {
             text = "Play"
             contentDescription = "Play or pause the active mode"
             setOnClickListener { togglePlayPause() }
@@ -606,29 +607,53 @@ class MainActivity : AppCompatActivity() {
     private fun showDrumKitDialog() {
         val targets = DrumTarget.values().toList()
         val profile = whackController.currentProfile()
-        val mappingLabels = targets.map { target ->
-            val triggers = profile?.triggers.orEmpty().filter { it.target == target }
-            val mapping = if (triggers.isEmpty()) {
-                "not mapped"
-            } else {
-                triggers.joinToString { "MIDI ${it.midiNote}" }
-            }
-            "${target.label} — $mapping"
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), 0)
         }
-        val labels = (mappingLabels + listOf(
-            "Use General MIDI defaults",
-            "Clear all mappings"
-        )).toTypedArray()
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(profile?.name ?: "Drum Kit")
-            .setItems(labels) { _, which ->
-                when {
-                    which < targets.size -> showDrumLearnDialog(targets[which])
-                    which == targets.size -> whackController.useGeneralMidiMapping()
-                    else -> whackController.clearMappings()
+        content.addView(TextView(this).apply {
+            text = "Individual pad calibration"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        })
+        content.addView(TextView(this).apply {
+            text = "Tap a target, then hit that pad once on your drum kit."
+            setPadding(0, dp(4), 0, dp(8))
+        })
+        targets.forEach { target ->
+            val trigger = profile?.triggers?.firstOrNull { it.target == target }
+            val mapping = trigger?.let {
+                "MIDI ${it.midiNote} / ${it.channel?.let { channel -> "Ch ${channel + 1}" } ?: "Any channel"}"
+            } ?: "Not mapped"
+            content.addView(Button(this).apply {
+                text = "${target.label}     $mapping"
+                contentDescription = "${target.label}: $mapping. Tap to calibrate"
+                setOnClickListener {
+                    showDrumLearnDialog(target)
                 }
+            })
+        }
+        content.addView(TextView(this).apply {
+            text = "Quick setup"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        content.addView(Button(this).apply {
+            text = "Use General MIDI Defaults"
+            contentDescription = "Use General MIDI Defaults for a standard drum kit"
+            setOnClickListener {
+                whackController.useGeneralMidiMapping()
             }
+        })
+        content.addView(Button(this).apply {
+            text = "Clear / Reset Mapping"
+            contentDescription = "Clear every drum pad mapping"
+            setOnClickListener { whackController.clearMappings() }
+        })
+        val scroll = ScrollView(this).apply { addView(content) }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(profile?.name ?: "Configure Drum Kit")
+            .setMessage("${profile?.availableTargets()?.size ?: 0} pads mapped. Partial kits are playable; targets use only mapped pads.")
+            .setView(scroll)
             .setNegativeButton("Close", null)
             .show()
     }
@@ -703,7 +728,14 @@ class MainActivity : AppCompatActivity() {
     private fun togglePlayPause() {
         when (currentMode) {
             GameMode.TEACHING -> if (isPlaying) controller.pause() else controller.play()
-            GameMode.GAME -> if (isPlaying) whackController.pause() else whackController.play()
+            GameMode.GAME -> when (latestWhackState?.readiness) {
+                WhackReadiness.NEEDS_CONFIGURATION -> showDrumKitDialog()
+                WhackReadiness.NO_DEVICE -> android.widget.Toast.makeText(
+                    this, "Connect a MIDI drum kit to configure and start a game", android.widget.Toast.LENGTH_LONG
+                ).show()
+                WhackReadiness.PLAYING -> whackController.pause()
+                else -> whackController.play()
+            }
         }
     }
 
@@ -727,7 +759,41 @@ class MainActivity : AppCompatActivity() {
         trimButton.visibility = if (game) View.GONE else View.VISIBLE
         gameModeButton.text = mode.label
         if (::playPauseButton.isInitialized) {
-            playPauseButton.text = if (isPlaying) "Pause" else "Play"
+            if (game) {
+                latestWhackState?.let(::renderWhackControls)
+                    ?: renderWhackControls(WhackUiState.empty())
+            } else {
+                playPauseButton.text = if (isPlaying) "Pause" else "Play"
+                restartButton.text = "Restart"
+                quickPlayPauseButton.text = if (isPlaying) "Pause" else "Play"
+            }
+        }
+    }
+
+    private fun renderWhackControls(state: WhackUiState) {
+        val primaryLabel = when (state.readiness) {
+            WhackReadiness.NO_DEVICE -> "Connect Drum Kit"
+            WhackReadiness.NEEDS_CONFIGURATION -> "Configure Drum Kit"
+            WhackReadiness.READY -> "Start Game"
+            WhackReadiness.PLAYING -> "Pause"
+            WhackReadiness.PAUSED -> "Resume"
+            WhackReadiness.LEARNING_MAPPING -> "Mapping Pad"
+        }
+        playPauseButton.text = primaryLabel
+        playPauseButton.isEnabled = state.readiness != WhackReadiness.LEARNING_MAPPING
+        quickPlayPauseButton.text = primaryLabel
+        quickPlayPauseButton.isEnabled = playPauseButton.isEnabled
+        restartButton.text = "Restart Game"
+        restartButton.contentDescription = "Restart Whack-a-MIDI game"
+        drumKitButton.text = if (state.readiness == WhackReadiness.NEEDS_CONFIGURATION) {
+            "Configure Drum Kit"
+        } else {
+            "Drum Kit"
+        }
+        drumKitButton.contentDescription = if (state.mappedTargetCount == 0) {
+            "Configure Drum Kit: required before starting"
+        } else {
+            "Configure Drum Kit: ${state.mappedTargetCount} pads mapped"
         }
     }
 

@@ -71,10 +71,11 @@ Teaching mode keeps the original parsed MIDI file as the source of truth and der
 
 1. The user switches the mode selector to `Whack-a-MIDI`.
 2. The user connects a MIDI drum module.
-3. The user opens `Drum Kit` and maps pads by striking them, or loads General MIDI defaults.
-4. The user chooses a difficulty preset that controls target lifetime and inter-target delay.
-5. The user presses `Play`.
-6. A mapped drum target is highlighted.
+3. With no device, the game surface prominently says `Connect a MIDI drum kit`; after connection with no mappings it says `Configure your drum kit` and shows the connect/configure/start sequence.
+4. The user opens `Configure Drum Kit` and maps pads by striking them, or uses the separate `Use General MIDI Defaults` shortcut.
+5. The user chooses a difficulty preset that controls target lifetime and inter-target delay, not drum mapping.
+6. Once readiness reports at least one mapped pad, the user presses `Start Game`.
+7. A mapped drum target is highlighted.
 7. A matching strike records a hit, reaction time, score, and combo; a different mapped pad records a wrong-pad strike without consuming the target and resets combo.
 8. An expired target records a miss, resets combo, and schedules the next target.
 
@@ -159,7 +160,7 @@ The visualizer is the main teaching surface. It shows:
 
 ### 6.6 Drum Mapping
 
-- The Drum Kit dialog shows each logical drum target and its current MIDI note mapping.
+- The Drum Kit dialog separates individual pad calibration, `Use General MIDI Defaults`, and `Clear / Reset Mapping`. Each logical target reports `Not mapped` or its MIDI note and channel.
 - Selecting a target arms a one-hit learn operation.
 - The next NoteOn maps its note/channel to that target.
 - A single physical note is not retained for multiple logical targets.
@@ -169,8 +170,8 @@ The visualizer is the main teaching surface. It shows:
 
 ### 6.7 Whack-a-MIDI Gameplay
 
-- Play starts or resumes the monotonic game transport.
-- Restart clears the current strike session and begins at time zero.
+- `Start Game` starts the monotonic game transport; it becomes `Pause`, then `Resume` while preserving the paused session.
+- `Restart Game` clears the current strike session and begins at time zero.
 - Difficulty presets adjust target lifetime and the inter-target delay without changing the logical kit mapping.
 - Targets are generated only from currently mapped pads.
 - Correct hits receive a base score plus a reaction-time bonus and bounded combo bonus.
@@ -240,12 +241,12 @@ The app is driven by a session state snapshot that is pushed into the UI on a re
 - Complete.
 - Saved MIDI unavailable.
 - Import failed.
-- Drum kit not configured.
-- Waiting for MIDI drum device.
-- Learning a drum mapping.
-- Whack-a-MIDI ready.
-- Whack-a-MIDI playing.
-- Whack-a-MIDI paused.
+- `NO_DEVICE`.
+- `NEEDS_CONFIGURATION`.
+- `LEARNING_MAPPING`.
+- `READY`.
+- `PLAYING`.
+- `PAUSED`.
 
 ### 8.2 State Transition Rules
 

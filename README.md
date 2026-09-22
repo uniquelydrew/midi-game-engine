@@ -26,10 +26,12 @@ The app keeps the complete parsed MIDI document as its source of truth. Track se
 
 1. Switch the mode selector to **Whack-a-MIDI**.
 2. Connect a class-compliant MIDI drum module.
-3. Open **Drum Kit** and either map each pad by striking it or load the General MIDI defaults.
-4. Choose a **Difficulty** preset: Relaxed, Standard, Fast, or Expert.
-5. Press **Play**.
-6. Strike the highlighted drum target before it expires. Hits, misses, wrong-pad strikes, velocity, reaction times, score, and combo are tracked independently of the Teaching judgment engine.
+3. The game surface tells you what is needed: **Connect a MIDI drum kit** when none is connected, then **Configure your drum kit** when it has no mappings.
+4. Open **Configure Drum Kit** and either map each pad by striking it once or use the clearly separated **Use General MIDI Defaults** shortcut.
+5. Confirm the readiness message (for example, `Ready — 1 pad mapped`). Partial kits are playable and targets use only mapped pads.
+6. Choose a **Difficulty** preset: Relaxed, Standard, Fast, or Expert. Difficulty changes target timing, not drum mapping.
+7. Press **Start Game**. It becomes **Pause** while playing and **Resume** when paused; **Restart Game** resets score and session state.
+8. Strike the visually dominant highlighted drum target before it expires. Hits, misses, wrong-pad strikes, velocity, reaction times, score, and combo are tracked independently of the Teaching judgment engine.
 
 Drum mappings are persisted per detected MIDI device. Target generation is constrained to mapped pads so the game does not request unavailable kit pieces.
 
@@ -110,8 +112,9 @@ Teaching:
 Whack-a-MIDI:
 
 - Connect a MIDI drum module and confirm it is detected without keyboard-specific assumptions.
+- Confirm the no-device surface says **Connect a MIDI drum kit**, and a connected unmapped kit says **Configure your drum kit**.
 - Map at least two pads with **Drum Kit** and confirm the mappings persist after reopening the app.
-- Start Whack-a-MIDI and confirm only mapped pads are selected as targets.
+- Start Whack-a-MIDI with one mapped pad and confirm it is playable and only mapped pads are selected as targets.
 - Confirm correct hits record reaction time and velocity and increase score/combo.
 - Confirm wrong-pad strikes are counted without consuming the current target and reset combo.
 - Change difficulty and confirm target lifetime/gap timing changes and persists across restart.

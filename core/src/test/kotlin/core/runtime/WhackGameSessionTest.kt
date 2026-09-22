@@ -1,6 +1,7 @@
 package core.runtime
 
 import core.drums.DrumKitProfile
+import core.drums.DrumKitProfiles
 import core.drums.DrumTarget
 import core.drums.DrumTrigger
 import core.midi.NoteOn
@@ -10,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class WhackGameSessionTest {
     private class SequenceSelector(
@@ -146,5 +148,22 @@ class WhackGameSessionTest {
         val hit = session.onInput(NoteOn(100_000L, pitch = 38, velocity = 100, channel = 9))
         assertEquals(StrikeOutcome.HIT, hit?.outcome)
         assertEquals(DrumTarget.SNARE, session.currentTarget()?.target)
+    }
+
+    @Test
+    fun `empty mappings cannot create an invalid game session`() {
+        assertFailsWith<IllegalArgumentException> {
+            WhackGameSession(DrumKitProfile(name = "Unmapped kit", triggers = emptyList()))
+        }
+    }
+
+    @Test
+    fun `general midi defaults create a playable profile with all logical targets`() {
+        val profile = DrumKitProfiles.generalMidi()
+        assertEquals(DrumTarget.values().toSet(), profile.availableTargets().toSet())
+
+        val session = WhackGameSession(profile)
+        session.start(0L)
+        assertNotNull(session.currentTarget())
     }
 }

@@ -3,10 +3,40 @@ package com.example.midigameengine
 import core.drums.DrumTarget
 import core.strike.StrikeOutcome
 
+/** The one authoritative, user-facing state of Whack-a-MIDI. */
+enum class WhackReadiness {
+    NO_DEVICE,
+    NEEDS_CONFIGURATION,
+    READY,
+    PLAYING,
+    PAUSED,
+    LEARNING_MAPPING;
+
+    companion object {
+        fun derive(
+            deviceConnected: Boolean,
+            mappedTargetCount: Int,
+            isPlaying: Boolean,
+            hasStartedGame: Boolean,
+            learningTarget: DrumTarget?
+        ): WhackReadiness = when {
+            learningTarget != null -> LEARNING_MAPPING
+            !deviceConnected -> NO_DEVICE
+            mappedTargetCount == 0 -> NEEDS_CONFIGURATION
+            isPlaying -> PLAYING
+            hasStartedGame -> PAUSED
+            else -> READY
+        }
+    }
+}
+
 data class WhackUiState(
+    val readiness: WhackReadiness,
+    val deviceConnected: Boolean,
     val deviceStatus: String,
     val profileName: String?,
     val mappedTargets: Set<DrumTarget>,
+    val mappedTargetCount: Int,
     val target: DrumTarget?,
     val targetActive: Boolean,
     val targetRemainingMs: Long?,
@@ -33,9 +63,12 @@ data class WhackUiState(
     companion object {
         fun empty(): WhackUiState {
             return WhackUiState(
+                readiness = WhackReadiness.NO_DEVICE,
+                deviceConnected = false,
                 deviceStatus = "Waiting for a MIDI input device",
                 profileName = null,
                 mappedTargets = emptySet(),
+                mappedTargetCount = 0,
                 target = null,
                 targetActive = false,
                 targetRemainingMs = null,

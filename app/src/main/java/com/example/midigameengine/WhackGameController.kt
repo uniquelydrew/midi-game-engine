@@ -27,6 +27,8 @@ class WhackGameController(
     private var running = false
     private var released = false
     private var playing = false
+    private var hasStartedGame = false
+    private var deviceConnected = false
     private var deviceDescription: String? = null
     private var deviceStatus = "Waiting for a MIDI input device"
     private var profile: DrumKitProfile? = preferences.drumKitProfile(null)
@@ -127,6 +129,10 @@ class WhackGameController(
         midiInput.setStatusListener { status ->
             synchronized(lock) {
                 deviceStatus = status
+                deviceConnected = status.startsWith("Connected to ")
+                if (!deviceConnected && !status.startsWith("Connecting to ")) {
+                    deviceDescription = null
+                }
             }
             emitState()
         }
@@ -134,6 +140,7 @@ class WhackGameController(
         midiInput.setDeviceInfoListener { description ->
             synchronized(lock) {
                 deviceDescription = description
+                deviceConnected = true
                 profile = preferences.drumKitProfile(description)
                     ?: preferences.drumKitProfile(null)
                 session = createSessionAt(transport.positionNs() / 1_000L)
@@ -183,6 +190,7 @@ class WhackGameController(
                 transport.resume()
             }
             playing = true
+            hasStartedGame = true
             headline = "Whack-a-MIDI"
         }
         emitState()
@@ -208,10 +216,12 @@ class WhackGameController(
             resetFeedback()
             if (session == null) {
                 playing = false
+                hasStartedGame = false
                 headline = "Configure a drum kit before playing"
             } else {
                 transport.resume()
                 playing = true
+                hasStartedGame = true
                 headline = "Whack-a-MIDI"
             }
         }
@@ -252,6 +262,7 @@ class WhackGameController(
             transport.reset()
             session = createSessionAt(0L)
             playing = false
+            hasStartedGame = false
             resetFeedback()
             headline = "General MIDI drum mapping loaded"
         }
@@ -276,6 +287,7 @@ class WhackGameController(
             }
             transport.reset()
             playing = false
+            hasStartedGame = false
             resetFeedback()
             headline = "Drum mappings cleared"
         }
@@ -360,10 +372,22 @@ class WhackGameController(
                 currentTimeUs <= currentTarget.expiresAtUs
             val summary = session?.scoreSummary()
 
+            val mappedTargets = profile?.availableTargets()?.toSet().orEmpty()
+            val readiness = WhackReadiness.derive(
+                deviceConnected = deviceConnected,
+                mappedTargetCount = mappedTargets.size,
+                isPlaying = playing,
+                hasStartedGame = hasStartedGame,
+                learningTarget = pendingLearnTarget
+            )
+
             WhackUiState(
+                readiness = readiness,
+                deviceConnected = deviceConnected,
                 deviceStatus = deviceStatus,
                 profileName = profile?.name,
-                mappedTargets = profile?.availableTargets()?.toSet().orEmpty(),
+                mappedTargets = mappedTargets,
+                mappedTargetCount = mappedTargets.size,
                 target = currentTarget?.target,
                 targetActive = targetActive,
                 targetRemainingMs = currentTarget

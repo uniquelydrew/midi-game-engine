@@ -71,18 +71,43 @@ class WhackGameView(context: Context) : View(context) {
         canvas.drawText("Whack-a-MIDI", widthF / 2f, 38f * density, textPaint)
 
         secondaryTextPaint.textSize = 13f * density
-        canvas.drawText(state.deviceStatus, widthF / 2f, 61f * density, secondaryTextPaint)
+        val deviceLine = if (state.deviceConnected) {
+            "MIDI: ${state.deviceStatus.removePrefix("Connected to ")} — Connected"
+        } else {
+            "MIDI: Waiting for drum kit"
+        }
+        canvas.drawText(deviceLine, widthF / 2f, 61f * density, secondaryTextPaint)
+
+        if (state.readiness == WhackReadiness.NO_DEVICE ||
+            state.readiness == WhackReadiness.NEEDS_CONFIGURATION
+        ) {
+            drawOnboarding(canvas, widthF, heightF, density)
+            return
+        }
 
         textPaint.textSize = 16f * density
-        canvas.drawText(state.headline, widthF / 2f, 86f * density, textPaint)
+        val heading = when (state.readiness) {
+            WhackReadiness.READY -> "Ready — ${state.mappedTargetCount} pad${if (state.mappedTargetCount == 1) "" else "s"} mapped"
+            WhackReadiness.PAUSED -> "PAUSED — score and target are preserved"
+            WhackReadiness.LEARNING_MAPPING -> state.headline
+            else -> state.headline
+        }
+        canvas.drawText(heading, widthF / 2f, 86f * density, textPaint)
 
-        val scoreLine = "Score ${state.scorePoints}   Combo x${state.combo}   ${state.difficultyLabel}"
+        if (state.readiness == WhackReadiness.PLAYING && state.targetActive) {
+            textPaint.textSize = 26f * density
+            textPaint.color = Color.rgb(255, 205, 70)
+            canvas.drawText("HIT THE ${state.target?.label?.uppercase()}", widthF / 2f, 116f * density, textPaint)
+        }
+
+        val scoreLine = "Score ${state.scorePoints}   Combo x${state.combo}   Difficulty: ${state.difficultyLabel}"
         textPaint.textSize = 15f * density
-        canvas.drawText(scoreLine, widthF / 2f, 111f * density, textPaint)
+        textPaint.color = Color.WHITE
+        canvas.drawText(scoreLine, widthF / 2f, if (state.readiness == WhackReadiness.PLAYING) 140f * density else 111f * density, textPaint)
 
         val stats = "Hits ${state.hitCount}   Misses ${state.missCount}   Wrong ${state.wrongStrikeCount}"
         secondaryTextPaint.textSize = 13f * density
-        canvas.drawText(stats, widthF / 2f, 133f * density, secondaryTextPaint)
+        canvas.drawText(stats, widthF / 2f, if (state.readiness == WhackReadiness.PLAYING) 160f * density else 133f * density, secondaryTextPaint)
 
         val reaction = buildString {
             state.averageReactionTimeMs?.let { append("Avg ${it}ms") }
@@ -92,18 +117,18 @@ class WhackGameView(context: Context) : View(context) {
             if (state.maxCombo > 0) append("Max combo x${state.maxCombo}")
         }
         if (reaction.isNotEmpty()) {
-            canvas.drawText(reaction, widthF / 2f, 153f * density, secondaryTextPaint)
+            canvas.drawText(reaction, widthF / 2f, if (state.readiness == WhackReadiness.PLAYING) 180f * density else 153f * density, secondaryTextPaint)
         }
 
         val midiMonitor = state.lastMidiNote?.let { note ->
             val channel = (state.lastMidiChannel ?: 0) + 1
             val velocity = state.lastMidiVelocity ?: 0
-            "MIDI note $note   ch $channel   vel $velocity"
+            "MIDI note $note / Ch $channel / Vel $velocity"
         } ?: "MIDI monitor: waiting for input"
         secondaryTextPaint.textSize = 12f * density
         canvas.drawText(midiMonitor, widthF / 2f, 174f * density, secondaryTextPaint)
 
-        val kitTop = 192f * density
+        val kitTop = if (state.readiness == WhackReadiness.PLAYING) 198f * density else 192f * density
         val kitBottom = heightF - 24f * density
         val kitHeight = (kitBottom - kitTop).coerceAtLeast(1f)
         val pads = buildPadRects(widthF, kitTop, kitHeight)
@@ -167,6 +192,25 @@ class WhackGameView(context: Context) : View(context) {
                 heightF - 8f * density,
                 feedbackPaint
             )
+        }
+    }
+
+    private fun drawOnboarding(canvas: Canvas, widthF: Float, heightF: Float, density: Float) {
+        textPaint.textSize = 25f * density
+        val title = if (state.readiness == WhackReadiness.NO_DEVICE) {
+            "Connect a MIDI drum kit"
+        } else {
+            "Configure your drum kit"
+        }
+        canvas.drawText(title, widthF / 2f, heightF * 0.33f, textPaint)
+        secondaryTextPaint.textSize = 16f * density
+        val lines = if (state.readiness == WhackReadiness.NO_DEVICE) {
+            listOf("Connect a kit to enable configuration.", "Then map pads or use General MIDI defaults.")
+        } else {
+            listOf("1. Connect MIDI drum kit", "2. Configure Drum Kit", "3. Start Game")
+        }
+        lines.forEachIndexed { index, line ->
+            canvas.drawText(line, widthF / 2f, heightF * (0.42f + index * 0.08f), secondaryTextPaint)
         }
     }
 
