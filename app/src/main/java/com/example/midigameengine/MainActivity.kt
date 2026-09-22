@@ -23,6 +23,7 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import core.drums.DrumTarget
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardZoom
 import core.visualization.PitchRange
@@ -31,8 +32,12 @@ import java.io.OutputStream
 class MainActivity : AppCompatActivity() {
 
     private lateinit var controller: TeachingSessionController
+    private lateinit var whackController: WhackGameController
     private lateinit var visualizerView: TeachingVisualizerView
+    private lateinit var whackGameView: WhackGameView
+    private lateinit var preferences: AppPreferencesStore
     private lateinit var timelineSeekBar: SeekBar
+    private lateinit var timelineRow: LinearLayout
     private lateinit var timeLabel: TextView
     private lateinit var playPauseButton: Button
     private lateinit var speedButton: Button
@@ -40,10 +45,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var optionsPanel: View
     private lateinit var optionsToggleButton: Button
     private lateinit var gameModeButton: Button
+    private lateinit var drumKitButton: Button
+    private var teachingSetupButtons: List<Button> = emptyList()
     private var userScrubbing = false
+    private var currentMode = GameMode.TEACHING
     private var isPlaying = false
     private var optionsExpanded = true
     private var latestState: TeachingUiState? = null
+    private var latestWhackState: WhackUiState? = null
+    private var drumLearnDialog: androidx.appcompat.app.AlertDialog? = null
     private var activityActive = false
     private var visualizationDownX = 0f
     private var visualizationDownY = 0f
@@ -99,6 +109,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         AppDebugLogger.initialize(this)
         AppDebugLogger.log("onCreate orientation=${resources.configuration.orientation} saved=${savedInstanceState != null}")
+        preferences = AppPreferencesStore(this)
+        currentMode = preferences.gameMode()
         optionsExpanded = savedInstanceState?.getBoolean("optionsExpanded", true) ?: true
 
         visualizerView = TeachingVisualizerView(this).apply {
@@ -170,10 +182,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        whackGameView = WhackGameView(this).apply {
+            visibility = View.GONE
+        }
+
         controller = TeachingSessionController(
             context = this,
             onStateChanged = { state ->
-                if (!activityActive) return@TeachingSessionController
+                if (!activityActive || currentMode != GameMode.TEACHING) return@TeachingSessionController
                 latestState = state
                 AppDebugLogger.logState(state)
                 visualizerView.submitState(state)
@@ -194,12 +210,37 @@ class MainActivity : AppCompatActivity() {
                         "Trim: Off"
                     }
                 }
-                if (::gameModeButton.isInitialized) gameModeButton.text = state.gameMode.label
+                if (::gameModeButton.isInitialized) gameModeButton.text = currentMode.label
                 isPlaying = state.isPlaying
                 if (::playPauseButton.isInitialized) playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
             },
             onTrackSelectionRequired = { choices ->
                 showTrackSelectionDialog(choices)
+            }
+        )
+
+        whackController = WhackGameController(
+            context = this,
+            onStateChanged = { state ->
+                if (!activityActive || currentMode != GameMode.GAME) return@WhackGameController
+                latestWhackState = state
+                whackGameView.submitState(state)
+                isPlaying = state.isPlaying
+                if (::playPauseButton.isInitialized) {
+                    playPauseButton.text = if (state.isPlaying) "Pause" else "Play"
+                }
+                if (::gameModeButton.isInitialized) gameModeButton.text = currentMode.label
+            },
+            onMappingLearned = { target, note ->
+                runOnUiThread {
+                    drumLearnDialog?.dismiss()
+                    drumLearnDialog = null
+                    android.widget.Toast.makeText(
+                        this,
+                        "${target.label} mapped to MIDI $note",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         )
 
@@ -228,6 +269,13 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Configure keyboard layout"
             setOnClickListener { showLayoutDialog() }
         }
+        drumKitButton = Button(this).apply {
+            text = "Drum Kit"
+            contentDescription = "Configure drum MIDI mappings"
+            setOnClickListener { showDrumKitDialog() }
+        }
+        teachingSetupButtons = listOf(importButton, trackButton, libraryButton, layoutButton)
+
         gameModeButton = Button(this).apply {
             text = "Teaching"
             contentDescription = "Choose game mode"
@@ -236,15 +284,13 @@ class MainActivity : AppCompatActivity() {
 
         playPauseButton = Button(this).apply {
             text = "Play"
-            contentDescription = "Play or pause MIDI playback"
-            setOnClickListener {
-                if (isPlaying) controller.pause() else controller.play()
-            }
+            contentDescription = "Play or pause the active mode"
+            setOnClickListener { togglePlayPause() }
         }
         val restartButton = Button(this).apply {
             text = "Restart"
-            contentDescription = "Restart playback"
-            setOnClickListener { controller.restart() }
+            contentDescription = "Restart current session"
+            setOnClickListener { restartActiveSession() }
         }
         speedButton = Button(this).apply {
             text = "Speed"
@@ -265,7 +311,8 @@ class MainActivity : AppCompatActivity() {
             playPauseButton,
             restartButton,
             speedButton,
-            trimButton
+            trimButton,
+            drumKitButton
         ).forEach(::styleButton)
 
         val exportLogsButton = Button(this).apply {
@@ -279,10 +326,8 @@ class MainActivity : AppCompatActivity() {
 
         val quickPlayPauseButton = Button(this).apply {
             text = "Play"
-            contentDescription = "Play or pause MIDI playback"
-            setOnClickListener {
-                if (isPlaying) controller.pause() else controller.play()
-            }
+            contentDescription = "Play or pause the active mode"
+            setOnClickListener { togglePlayPause() }
         }
 
         optionsToggleButton = Button(this).apply {
@@ -305,6 +350,7 @@ class MainActivity : AppCompatActivity() {
             addView(trackButton, buttonParams())
             addView(libraryButton, buttonParams())
             addView(layoutButton, buttonParams())
+            addView(drumKitButton, buttonParams())
         }
 
         val transportRow = LinearLayout(this).apply {
@@ -340,7 +386,7 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        val timelineRow = LinearLayout(this).apply {
+        timelineRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(timelineSeekBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(timeLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -386,11 +432,20 @@ class MainActivity : AppCompatActivity() {
                     1f
                 )
             )
+            addView(
+                whackGameView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
         }
 
         setContentView(root)
         optionsPanel = buttonRow
         setOptionsExpanded(optionsExpanded, quickPlayPauseButton)
+        applyModeVisibility(currentMode)
         controller.restoreLast()
     }
 
@@ -398,13 +453,19 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         activityActive = true
         AppDebugLogger.log("onResume")
-        controller.start()
+        when (currentMode) {
+            GameMode.TEACHING -> controller.start()
+            GameMode.GAME -> whackController.start()
+        }
     }
 
     override fun onPause() {
         activityActive = false
         AppDebugLogger.log("onPause")
-        controller.stop()
+        when (currentMode) {
+            GameMode.TEACHING -> controller.stop()
+            GameMode.GAME -> whackController.stop()
+        }
         super.onPause()
     }
 
@@ -416,7 +477,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         AppDebugLogger.log("onDestroy changingConfigurations=$isChangingConfigurations")
+        drumLearnDialog?.dismiss()
         controller.release()
+        whackController.release()
         super.onDestroy()
     }
 
@@ -513,18 +576,119 @@ class MainActivity : AppCompatActivity() {
 
     private fun showGameModeDialog() {
         val modes = GameMode.values()
-        val selected = modes.indexOf(controller.gameMode()).coerceAtLeast(0)
+        val selected = modes.indexOf(currentMode).coerceAtLeast(0)
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Game mode")
             .setSingleChoiceItems(
                 modes.map { "${it.label}\n${it.description}" }.toTypedArray(),
                 selected
             ) { dialog, which ->
-                controller.setGameMode(modes[which])
+                switchMode(modes[which])
                 dialog.dismiss()
             }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    private fun showDrumKitDialog() {
+        val targets = DrumTarget.values().toList()
+        val profile = whackController.currentProfile()
+        val mappingLabels = targets.map { target ->
+            val triggers = profile?.triggers.orEmpty().filter { it.target == target }
+            val mapping = if (triggers.isEmpty()) {
+                "not mapped"
+            } else {
+                triggers.joinToString { "MIDI ${it.midiNote}" }
+            }
+            "${target.label} — $mapping"
+        }
+        val labels = (mappingLabels + listOf(
+            "Use General MIDI defaults",
+            "Clear all mappings"
+        )).toTypedArray()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(profile?.name ?: "Drum Kit")
+            .setItems(labels) { _, which ->
+                when {
+                    which < targets.size -> showDrumLearnDialog(targets[which])
+                    which == targets.size -> whackController.useGeneralMidiMapping()
+                    else -> whackController.clearMappings()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showDrumLearnDialog(target: DrumTarget) {
+        drumLearnDialog?.dismiss()
+        whackController.beginLearn(target)
+        drumLearnDialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Map ${target.label}")
+            .setMessage("Hit the ${target.label} on the connected MIDI drum kit.")
+            .setNegativeButton("Cancel") { _, _ -> whackController.cancelLearn() }
+            .create()
+            .also { dialog ->
+                dialog.setOnCancelListener { whackController.cancelLearn() }
+                dialog.show()
+            }
+    }
+
+    private fun switchMode(mode: GameMode) {
+        if (mode == currentMode) return
+
+        when (currentMode) {
+            GameMode.TEACHING -> {
+                controller.pause()
+                if (activityActive) controller.stop()
+            }
+            GameMode.GAME -> {
+                whackController.pause()
+                if (activityActive) whackController.stop()
+            }
+        }
+
+        currentMode = mode
+        preferences.setGameMode(mode)
+        controller.setGameMode(mode)
+        isPlaying = false
+        applyModeVisibility(mode)
+
+        if (activityActive) {
+            when (mode) {
+                GameMode.TEACHING -> controller.start()
+                GameMode.GAME -> whackController.start()
+            }
+        }
+    }
+
+    private fun togglePlayPause() {
+        when (currentMode) {
+            GameMode.TEACHING -> if (isPlaying) controller.pause() else controller.play()
+            GameMode.GAME -> if (isPlaying) whackController.pause() else whackController.play()
+        }
+    }
+
+    private fun restartActiveSession() {
+        when (currentMode) {
+            GameMode.TEACHING -> controller.restart()
+            GameMode.GAME -> whackController.restart()
+        }
+    }
+
+    private fun applyModeVisibility(mode: GameMode) {
+        val game = mode == GameMode.GAME
+        visualizerView.visibility = if (game) View.GONE else View.VISIBLE
+        whackGameView.visibility = if (game) View.VISIBLE else View.GONE
+        timelineRow.visibility = if (game) View.GONE else View.VISIBLE
+        teachingSetupButtons.forEach { it.visibility = if (game) View.GONE else View.VISIBLE }
+        drumKitButton.visibility = if (game) View.VISIBLE else View.GONE
+        speedButton.visibility = if (game) View.GONE else View.VISIBLE
+        trimButton.visibility = if (game) View.GONE else View.VISIBLE
+        gameModeButton.text = mode.label
+        if (::playPauseButton.isInitialized) {
+            playPauseButton.text = if (isPlaying) "Pause" else "Play"
+        }
     }
 
     private fun showCustomRangeDialog() {

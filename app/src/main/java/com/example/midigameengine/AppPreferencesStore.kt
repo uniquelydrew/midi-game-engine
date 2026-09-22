@@ -2,6 +2,9 @@ package com.example.midigameengine
 
 import android.content.Context
 import core.chart.PlaybackSettings
+import core.drums.DrumKitProfile
+import core.drums.DrumTarget
+import core.drums.DrumTrigger
 import core.visualization.KeyboardProfile
 import core.visualization.KeyboardProfileMode
 import core.visualization.KeyboardZoom
@@ -113,6 +116,67 @@ class AppPreferencesStore(context: Context) {
             .apply()
     }
 
+    fun drumKitProfile(deviceKey: String?): DrumKitProfile? {
+        val key = drumProfileKey(deviceKey)
+        val raw = preferences.getString(key, null) ?: return null
+
+        return runCatching {
+            val root = JSONObject(raw)
+            val triggersJson = root.optJSONArray("triggers") ?: JSONArray()
+            val triggers = buildList {
+                for (index in 0 until triggersJson.length()) {
+                    val item = triggersJson.optJSONObject(index) ?: continue
+                    val target = runCatching {
+                        DrumTarget.valueOf(item.getString("target"))
+                    }.getOrNull() ?: continue
+                    val note = item.optInt("note", -1)
+                    if (note !in 0..127) continue
+                    val channel = if (item.has("channel") && !item.isNull("channel")) {
+                        item.optInt("channel").takeIf { it in 0..15 }
+                    } else {
+                        null
+                    }
+                    val minVelocity = item.optInt("minVelocity", 1).coerceIn(1, 127)
+                    add(
+                        DrumTrigger(
+                            target = target,
+                            midiNote = note,
+                            channel = channel,
+                            minVelocity = minVelocity
+                        )
+                    )
+                }
+            }
+            DrumKitProfile(
+                name = root.optString("name", "Drum kit"),
+                triggers = triggers
+            )
+        }.getOrNull()
+    }
+
+    fun saveDrumKitProfile(deviceKey: String?, profile: DrumKitProfile) {
+        val triggers = JSONArray()
+        profile.triggers.forEach { trigger ->
+            triggers.put(
+                JSONObject()
+                    .put("target", trigger.target.name)
+                    .put("note", trigger.midiNote)
+                    .put("channel", trigger.channel ?: JSONObject.NULL)
+                    .put("minVelocity", trigger.minVelocity)
+            )
+        }
+        val root = JSONObject()
+            .put("name", profile.name)
+            .put("triggers", triggers)
+        preferences.edit()
+            .putString(drumProfileKey(deviceKey), root.toString())
+            .apply()
+    }
+
+    fun clearDrumKitProfile(deviceKey: String?) {
+        preferences.edit().remove(drumProfileKey(deviceKey)).apply()
+    }
+
     fun playbackSettings(): PlaybackSettings {
         return PlaybackSettings(
             speed = preferences.getFloat(KEY_SPEED, 1.0f).toDouble(),
@@ -147,6 +211,10 @@ class AppPreferencesStore(context: Context) {
 
     fun setGameMode(mode: GameMode) {
         preferences.edit().putString(KEY_GAME_MODE, mode.name).apply()
+    }
+
+    private fun drumProfileKey(deviceKey: String?): String {
+        return deviceKey?.let { "drums.$it.profile" } ?: "drums.default.profile"
     }
 
     private companion object {

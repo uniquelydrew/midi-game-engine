@@ -9,7 +9,7 @@ enum class GameMode(
         description = "Follow the cascade and practice the expected notes."
     ),
     GAME(
-        label = "Game",
-        description = "Score your performance against the chart with timing, hold, and miss feedback."
+        label = "Whack-a-MIDI",
+        description = "Strike the highlighted drum pad as quickly and accurately as possible."
     )
 }
