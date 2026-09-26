@@ -32,4 +32,23 @@ class TransportTest {
         clock.timeNs = 500_000_000L
         assertEquals(3_500_000_000L, transport.positionNs())
     }
+
+    @Test
+    fun `external monotonic timestamp maps to transport position`() {
+        val clock = FakeClock(10_000_000_000L)
+        val transport = Transport(clock)
+        transport.seekTo(2_000_000L)
+        transport.resume()
+
+        assertEquals(
+            2_125_000_000L,
+            transport.positionAtClockNs(10_125_000_000L)
+        )
+
+        transport.setRate(2.0)
+        assertEquals(
+            2_500_000_000L,
+            transport.positionAtClockNs(10_250_000_000L)
+        )
+    }
 }

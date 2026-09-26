@@ -45,9 +45,17 @@ class Transport(
 
     fun rate(): Double = rate
 
-    fun positionNs(): Long {
+    fun positionNs(): Long = positionAtClockNs(clock.now())
+
+    /**
+     * Converts a timestamp from the same monotonic time base as [Clock] into
+     * transport-relative time. Android MIDI timestamps use a monotonic
+     * nanosecond clock, so preserving them here avoids replacing device timing
+     * with callback-arrival timing.
+     */
+    fun positionAtClockNs(clockTimeNs: Long): Long {
         return if (running) {
-            anchorPositionNs + ((clock.now() - anchorClockNs) * rate).toLong()
+            anchorPositionNs + ((clockTimeNs - anchorClockNs) * rate).toLong()
         } else {
             anchorPositionNs
         }

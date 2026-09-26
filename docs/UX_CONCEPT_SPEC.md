@@ -3,17 +3,17 @@
 **Status:** Draft
 **Audience:** Product, design, engineering, and concept-ingestion tooling
 **Focus:** User experience and interaction model first, implementation details second
-**Scope:** Android MIDI teaching and practice flow
+**Scope:** Android MIDI teaching plus Whack-a-MIDI drum gameplay
 
 ## 1. Purpose
 
 This document describes the intended user experience of MIDI Game Engine in a way that is readable by people and stable enough for machines to ingest.
 
-The app helps a player practice a MIDI performance against a synchronized note highway, a keyboard visualization, and connected physical MIDI input. The experience is centered on learning, feedback, and low-friction session recovery.
+The app supports two MIDI-driven experiences. Teaching mode lets a player practice a MIDI performance against a synchronized note highway, keyboard visualization, synthesized playback, and physical MIDI input. Whack-a-MIDI turns a connected MIDI drum kit into a reaction game driven by calibrated drum-pad mappings. Both modes emphasize immediate feedback and low-friction session recovery.
 
 ## 2. Product Summary
 
-MIDI Game Engine is a teaching-focused Android app for practicing MIDI songs.
+MIDI Game Engine is an Android MIDI practice and game app. Teaching mode focuses on MIDI-song practice; Whack-a-MIDI is an independent drum-input game loop.
 
 The user can:
 
@@ -23,8 +23,11 @@ The user can:
 - Play, pause, restart, scrub, and slow down or speed up playback.
 - Review practice feedback through the note highway and on-screen keyboard.
 - Reopen previously imported files from a local library.
+- Switch to Whack-a-MIDI without loading a Standard MIDI file.
+- Calibrate drum pads by striking the physical kit, or load General MIDI defaults.
+- Play reaction targets using only the pads mapped for the current MIDI device.
 
-The app keeps the original parsed MIDI file as the source of truth and derives playable practice charts from the selected tracks.
+Teaching mode keeps the original parsed MIDI file as the source of truth and derives playable practice charts from the selected tracks. Whack-a-MIDI instead uses a persisted DrumKitProfile and a strike-target session.
 
 ## 3. Core UX Principles
 
@@ -60,13 +63,25 @@ The app keeps the original parsed MIDI file as the source of truth and derives p
 
 ### 4.4 Return Visits
 
-1. The app shows the last imported MIDI file or library entries.
-2. The app restores track selection and layout preferences when possible.
-3. The user can reopen a saved session without re-importing the source file.
+1. The app restores the last selected mode.
+2. Teaching mode restores the last imported MIDI file or library entries and associated track/layout preferences.
+3. Whack-a-MIDI restores the drum mapping for the detected MIDI device when available.
+
+### 4.5 Whack-a-MIDI Loop
+
+1. The user switches the mode selector to `Whack-a-MIDI`.
+2. The user connects a MIDI drum module.
+3. With no device, the game surface prominently says `Connect a MIDI drum kit`; after connection with no mappings it says `Configure your drum kit` and shows the connect/configure/start sequence.
+4. The user opens `Configure Drum Kit` and maps pads by striking them, or uses the separate `Use General MIDI Defaults` shortcut.
+5. The user chooses a difficulty preset that controls target lifetime and inter-target delay, not drum mapping.
+6. Once readiness reports at least one mapped pad, the user presses `Start Game`.
+7. A mapped drum target is highlighted.
+7. A matching strike records a hit, reaction time, score, and combo; a different mapped pad records a wrong-pad strike without consuming the target and resets combo.
+8. An expired target records a miss, resets combo, and schedules the next target.
 
 ## 5. Screen Model
 
-The current interface is a single-screen teaching workspace with four major zones.
+The current interface is a single-screen workspace whose primary surface and setup controls change with the selected mode.
 
 ### 5.1 Toolbar Row
 
@@ -84,7 +99,8 @@ Contains file and session setup controls:
 - Import MIDI.
 - Track selection.
 - Library access.
-- Keyboard layout configuration.
+- Keyboard layout configuration in Teaching mode.
+- Drum-kit mapping and General MIDI defaults in Whack-a-MIDI mode.
 
 ### 5.3 Transport Row
 
@@ -138,9 +154,30 @@ The visualizer is the main teaching surface. It shows:
 
 ### 6.5 Timeline Scrubbing
 
-- Dragging the seek bar begins a scrub session.
+- Dragging the seek bar begins a scrub session in Teaching mode.
 - The app pauses playback while scrubbing.
 - Releasing the seek bar ends the scrub session.
+
+### 6.6 Drum Mapping
+
+- The Drum Kit dialog separates individual pad calibration, `Use General MIDI Defaults`, and `Clear / Reset Mapping`. Each logical target reports `Not mapped` or its MIDI note and channel.
+- Selecting a target arms a one-hit learn operation.
+- The next NoteOn maps its note/channel to that target.
+- A single physical note is not retained for multiple logical targets.
+- Mappings are stored per detected MIDI device, with a default fallback profile.
+- General MIDI defaults can be loaded explicitly.
+- The game surface exposes the latest raw NoteOn note, channel, and velocity as a live MIDI monitor.
+
+### 6.7 Whack-a-MIDI Gameplay
+
+- `Start Game` starts the monotonic game transport; it becomes `Pause`, then `Resume` while preserving the paused session.
+- `Restart Game` clears the current strike session and begins at time zero.
+- Difficulty presets adjust target lifetime and the inter-target delay without changing the logical kit mapping.
+- Targets are generated only from currently mapped pads.
+- Correct hits receive a base score plus a reaction-time bonus and bounded combo bonus.
+- Wrong-pad strikes and expired targets reset combo but do not subtract already-earned score.
+- Velocity is retained for diagnostics/game feedback but does not affect score.
+- NoteOff events do not judge drum strikes; strike gameplay resolves from NoteOn events.
 
 ## 7. Feedback Semantics
 
@@ -162,7 +199,7 @@ The visualizer uses consistent feedback channels so the user can understand timi
 
 ### 7.3 Session Feedback
 
-The header line communicates:
+Teaching mode communicates:
 
 - Current source file.
 - MIDI device status.
@@ -172,6 +209,21 @@ The header line communicates:
 - Visible range.
 - Combo.
 - Progress.
+
+### 7.4 Whack-a-MIDI Feedback
+
+The drum surface communicates:
+
+- Connected MIDI-device status.
+- Current drum-profile name.
+- Mapped and unmapped kit pieces.
+- The currently active target.
+- Remaining target time.
+- Hits, misses, and wrong-pad strikes.
+- Average and best reaction time.
+- Current score, combo, maximum combo, and selected difficulty.
+- Latest raw MIDI note/channel/velocity for hardware diagnostics.
+- Recent hit/wrong/miss feedback.
 
 ## 8. State Model
 
@@ -189,6 +241,12 @@ The app is driven by a session state snapshot that is pushed into the UI on a re
 - Complete.
 - Saved MIDI unavailable.
 - Import failed.
+- `NO_DEVICE`.
+- `NEEDS_CONFIGURATION`.
+- `LEARNING_MAPPING`.
+- `READY`.
+- `PLAYING`.
+- `PAUSED`.
 
 ### 8.2 State Transition Rules
 
@@ -212,6 +270,8 @@ Preferences are stored locally on the device.
 - Trim padding.
 - Keyboard zoom.
 - Game mode.
+- Drum-kit mappings keyed by detected MIDI device.
+- Whack-a-MIDI difficulty preset.
 
 ### 9.2 Layout Preferences
 
@@ -235,30 +295,40 @@ These terms are used consistently throughout the product and in this spec.
 - `TeachingVisualizerView`: Custom view that renders the note highway and keyboard.
 - `PlaybackWindow`: The active playback span, optionally auto-trimmed around note activity.
 - `Track`: User-facing action for choosing which MIDI tracks are included in the practice chart.
-- `Teaching mode`: The current intended experience.
-- `Game mode`: A placeholder mode that currently uses the teaching engine.
+- `Teaching mode`: MIDI-file practice using the note highway, keyboard, playback, and Teaching judgment engine.
+- `Whack-a-MIDI`: Drum-input reaction game using DrumKitProfile, WhackGameSession, and StrikeJudgmentEngine.
+- `DrumKitProfile`: Persisted mapping from physical MIDI NoteOn messages to logical drum targets.
+- `StrikeTarget`: A logical drum target with an appearance and expiration time.
 
 ## 11. Machine-Friendly Summary
 
 ```yaml
 product: MIDI Game Engine
 platform: Android
-primary_goal: Teach MIDI performance through synchronized visual feedback
-source_of_truth: Parsed Standard MIDI file
-derived_artifact: PlayableChart
-primary_loop:
+primary_goals:
+  - teach MIDI performance through synchronized visual feedback
+  - provide MIDI-drum reaction gameplay
+teaching_source_of_truth: Parsed Standard MIDI file
+teaching_derived_artifact: PlayableChart
+whack_source_of_truth: DrumKitProfile
+teaching_loop:
   - import MIDI
   - select tracks
   - configure layout
   - play and practice
   - scrub or restart
-  - persist session
+whack_loop:
+  - connect MIDI drum device
+  - map drum pads
+  - play timed targets
+  - record hit miss wrong-pad and reaction metrics
 core_surfaces:
   - toolbar controls
   - library and setup controls
   - transport controls
   - timeline
   - teaching visualizer
+  - Whack-a-MIDI drum surface
 persisted_preferences:
   - library entries
   - track selection
@@ -269,6 +339,7 @@ persisted_preferences:
   - visible pitch range
   - keyboard zoom
   - game mode
+  - drum kit profiles
 gesture_rules:
   tap_visualizer: toggle play/pause
   drag_vertical: scrub
@@ -279,15 +350,15 @@ state_outputs:
   - physical MIDI input
   - combo and progress
 non_goal_now:
-  - final game mode rules
   - cloud sync
   - destructive MIDI editing
+  - advanced cymbal articulation and hi-hat pedal interpretation
 ```
 
 ## 12. Current Product Boundaries
 
 - The app is still an MVP.
-- Game mode is present as a label and state branch, but it does not yet replace the teaching engine.
+- Whack-a-MIDI now has its own controller, view, drum-mapping model, target session, and strike judgment engine; hardware validation and gameplay tuning are still in progress.
 - The app is focused on local practice, not remote collaboration or cloud-backed libraries.
 - The source MIDI is retained rather than rewritten during normal practice flows.
 
@@ -300,9 +371,14 @@ This spec is grounded in the current codebase:
 - `app/src/main/java/com/example/midigameengine/TeachingSessionController.kt`
 - `app/src/main/java/com/example/midigameengine/TeachingUiState.kt`
 - `app/src/main/java/com/example/midigameengine/TeachingVisualizerView.kt`
+- `app/src/main/java/com/example/midigameengine/WhackGameController.kt`
+- `app/src/main/java/com/example/midigameengine/WhackGameView.kt`
 - `app/src/main/java/com/example/midigameengine/AppPreferencesStore.kt`
 - `core/src/main/kotlin/core/chart/ChartGenerator.kt`
 - `core/src/main/kotlin/core/chart/PlaybackWindow.kt`
+- `core/src/main/kotlin/core/drums/DrumKitProfile.kt`
+- `core/src/main/kotlin/core/runtime/WhackGameSession.kt`
+- `core/src/main/kotlin/core/strike/StrikeJudgmentEngine.kt`
 
 ## 14. Suggested Next Additions
 
