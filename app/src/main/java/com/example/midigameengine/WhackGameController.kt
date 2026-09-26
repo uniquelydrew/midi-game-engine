@@ -156,6 +156,8 @@ class WhackGameController(
 
     fun start() {
         if (released || running) return
+        profile = preferences.drumKitProfile(deviceDescription)
+        session = createSessionAt(transport.positionNs() / 1_000L)
         running = true
         midiInput.start()
         if (playing && !transport.isRunning()) {
@@ -387,6 +389,7 @@ class WhackGameController(
                 deviceStatus = deviceStatus,
                 profileName = profile?.name,
                 mappedTargets = mappedTargets,
+                layout = profile?.layout.orEmpty(),
                 mappedTargetCount = mappedTargets.size,
                 target = currentTarget?.target,
                 targetActive = targetActive,

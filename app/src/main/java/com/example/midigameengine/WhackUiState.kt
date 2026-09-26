@@ -1,6 +1,7 @@
 package com.example.midigameengine
 
 import core.drums.DrumTarget
+import core.drums.DrumKitLayoutPiece
 import core.strike.StrikeOutcome
 
 /** The one authoritative, user-facing state of Whack-a-MIDI. */
@@ -36,6 +37,7 @@ data class WhackUiState(
     val deviceStatus: String,
     val profileName: String?,
     val mappedTargets: Set<DrumTarget>,
+    val layout: List<DrumKitLayoutPiece>,
     val mappedTargetCount: Int,
     val target: DrumTarget?,
     val targetActive: Boolean,
@@ -68,6 +70,7 @@ data class WhackUiState(
                 deviceStatus = "Waiting for a MIDI input device",
                 profileName = null,
                 mappedTargets = emptySet(),
+                layout = emptyList(),
                 mappedTargetCount = 0,
                 target = null,
                 targetActive = false,

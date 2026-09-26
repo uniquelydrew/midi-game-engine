@@ -16,6 +16,7 @@ object AppDebugLogger {
     private var installed = false
     private var lastTeachingStateLogMs = 0L
     private var lastWhackStateLogMs = 0L
+    private var lastDrumSequenceStateLogMs = 0L
     private val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSZ", Locale.US)
 
     fun initialize(context: Context) {
@@ -88,9 +89,26 @@ object AppDebugLogger {
         )
     }
 
+    fun logState(state: DrumSequenceUiState) {
+        val now = System.currentTimeMillis()
+        synchronized(lock) {
+            if (now - lastDrumSequenceStateLogMs < 1_000L && !state.isCountingIn) return
+            lastDrumSequenceStateLogMs = now
+        }
+        log(
+            "DRUM_SEQUENCE_STATE source=${state.sourceLabel} playing=${state.isPlaying} " +
+                "countIn=${state.isCountingIn} positionUs=${state.playbackTimeUs}/${state.playbackEndUs} " +
+                "loop=${state.loopStartUs ?: -1}..${state.loopEndUs ?: -1} rule=${state.loopRuleLabel} " +
+                "score=${state.score.scorePoints} perfect=${state.score.perfectCount} " +
+                "good=${state.score.goodCount} miss=${state.score.missCount} " +
+                "wrong=${state.score.wrongStrikeCount} extra=${state.score.extraStrikeCount}"
+        )
+    }
+
     fun exportText(
         teachingState: TeachingUiState?,
-        whackState: WhackUiState? = null
+        whackState: WhackUiState? = null,
+        drumSequenceState: DrumSequenceUiState? = null
     ): String {
         val logs = synchronized(lock) { logFile?.takeIf { it.exists() }?.readText().orEmpty() }
         return buildString {
@@ -104,6 +122,9 @@ object AppDebugLogger {
             appendLine()
             appendLine("WHACK-A-MIDI STATE")
             appendLine(whackState?.toString() ?: "Unavailable")
+            appendLine()
+            appendLine("DRUM SEQUENCE STATE")
+            appendLine(drumSequenceState?.toString() ?: "Unavailable")
             appendLine()
             appendLine("LOG")
             append(logs.ifBlank { "No log entries captured." })

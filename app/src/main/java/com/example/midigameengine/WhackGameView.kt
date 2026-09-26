@@ -131,7 +131,7 @@ class WhackGameView(context: Context) : View(context) {
         val kitTop = if (state.readiness == WhackReadiness.PLAYING) 198f * density else 192f * density
         val kitBottom = heightF - 24f * density
         val kitHeight = (kitBottom - kitTop).coerceAtLeast(1f)
-        val pads = buildPadRects(widthF, kitTop, kitHeight)
+        val pads = buildPadRects(widthF, kitTop, kitHeight, state.layout)
 
         pads.forEach { (target, rect) ->
             val mapped = target in state.mappedTargets
@@ -217,7 +217,8 @@ class WhackGameView(context: Context) : View(context) {
     private fun buildPadRects(
         widthF: Float,
         top: Float,
-        heightF: Float
+        heightF: Float,
+        layout: List<core.drums.DrumKitLayoutPiece>
     ): Map<DrumTarget, RectF> {
         val unit = min(widthF, heightF)
         val cymbalW = unit * 0.25f
@@ -228,7 +229,7 @@ class WhackGameView(context: Context) : View(context) {
         fun centered(cx: Float, cy: Float, w: Float, h: Float): RectF =
             RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
 
-        return mapOf(
+        val defaults = mapOf(
             DrumTarget.CRASH to centered(widthF * 0.20f, top + heightF * 0.12f, cymbalW, cymbalH),
             DrumTarget.RIDE to centered(widthF * 0.80f, top + heightF * 0.12f, cymbalW, cymbalH),
             DrumTarget.TOM_1 to centered(widthF * 0.40f, top + heightF * 0.32f, drumW, drumH),
@@ -238,5 +239,10 @@ class WhackGameView(context: Context) : View(context) {
             DrumTarget.FLOOR_TOM to centered(widthF * 0.72f, top + heightF * 0.58f, drumW, drumH),
             DrumTarget.KICK to centered(widthF * 0.52f, top + heightF * 0.80f, drumW * 1.08f, drumH * 1.15f)
         )
+        if (layout.isEmpty()) return defaults
+        return layout.filter { it.visible }.associate { piece ->
+            val fallback = defaults[piece.target]!!
+            piece.target to centered(widthF * piece.xFraction, top + heightF * piece.yFraction, fallback.width(), fallback.height())
+        }
     }
 }

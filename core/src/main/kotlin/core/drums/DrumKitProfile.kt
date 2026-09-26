@@ -23,10 +23,12 @@ data class DrumTrigger(
 
 data class DrumKitProfile(
     val name: String,
-    val triggers: List<DrumTrigger>
+    val triggers: List<DrumTrigger>,
+    val layout: List<DrumKitLayoutPiece> = DrumKitLayouts.standard()
 ) {
     init {
         require(name.isNotBlank()) { "Drum kit profile name cannot be blank" }
+        require(layout.map { it.target }.distinct().size == layout.size) { "A kit layout may contain each target once" }
     }
 
     fun resolve(note: NoteOn): DrumTarget? {

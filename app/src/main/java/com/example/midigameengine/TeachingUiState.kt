@@ -47,6 +47,13 @@ data class TeachingUiState(
     val autoTrimEnabled: Boolean,
     val trimPaddingMs: Int,
     val keyboardZoomLabel: String,
+    val loopEnabled: Boolean,
+    val loopStartUs: Long?,
+    val loopEndUs: Long?,
+    val loopRuleLabel: String,
+    val loopCompletedPasses: Int,
+    val loopActiveElapsedMs: Long,
+    val lastLoopPassScore: Int?,
     val isPlaying: Boolean,
     val isScrubbing: Boolean
 ) {
@@ -92,6 +99,13 @@ data class TeachingUiState(
                 autoTrimEnabled = true,
                 trimPaddingMs = 50,
                 keyboardZoomLabel = "Standard",
+                loopEnabled = false,
+                loopStartUs = null,
+                loopEndUs = null,
+                loopRuleLabel = "Forever",
+                loopCompletedPasses = 0,
+                loopActiveElapsedMs = 0L,
+                lastLoopPassScore = null,
                 isPlaying = false,
                 isScrubbing = false
             )

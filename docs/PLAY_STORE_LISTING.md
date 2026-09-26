@@ -6,25 +6,25 @@ MIDI Game Engine
 
 ## Short description
 
-Practice MIDI songs with a falling-note visualizer and your physical keyboard.
+Practice piano and drum MIDI with visual feedback, looping, and connected MIDI instruments.
 
 ## Full description
 
-MIDI Game Engine turns Standard MIDI files into an interactive piano practice session.
+MIDI Game Engine turns Standard MIDI files into focused piano and drum practice sessions.
 
-Import a song, choose the tracks you want to practice, and follow the cascading notes toward an on-screen keyboard. Connect a compatible MIDI keyboard to receive live note feedback while the app highlights expected keys, held keys, correct hits, and missed notes.
+For Piano Practice, import a song, choose its tracks, and follow cascading notes to an on-screen keyboard. Connect a compatible MIDI keyboard for live note feedback, synthesized playback, speed controls, and A/B practice loops.
+
+For drums, choose between Whack-a-MIDI, a reactive calibrated-pad target game, and Drum Sequence Training. Sequence Training imports MIDI drum parts, supports independent track selection and source-note mapping, and gives Perfect/Good timing feedback while a range repeats. A four-beat count-in is available before starting and loop restarts.
 
 Features:
 
-- Import `.mid` and Standard MIDI files through Android's system picker.
-- Select and change one or more tracks after import.
-- Keep imported songs in a local MIDI library.
-- Practice with compact, standard, or large keyboard visualization modes.
-- Choose a full 88-key view or focus on the active song range.
-- Play, pause, restart, scrub, slow down, and adjust playback speed.
-- Remove leading and trailing silence with adjustable trim padding.
-- Hear local synthesized playback while practicing with a physical MIDI keyboard.
-- Export diagnostic logs when troubleshooting a device or rotation issue.
+- Import Standard MIDI files through Android's system picker.
+- Keep imported songs in a local MIDI library with independent Piano and Drum track selections.
+- Set and drag A/B loop ranges, enter exact times, and choose repeat counts or timed practice sessions.
+- Configure physical MIDI keyboards and drum-kit pad mappings, including General MIDI defaults.
+- Practice Piano with a falling-note visualizer and Drum Sequence Training with timing score feedback.
+- Play Whack-a-MIDI with calibrated pads, difficulty choices, and reaction-game scoring.
+- Export local diagnostic logs when troubleshooting.
 
 MIDI files and practice data remain on your device. The app does not require an account or upload your songs.
 

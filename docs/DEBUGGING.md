@@ -9,7 +9,7 @@ The app records a rotating diagnostic file in its private app storage. It includ
 - Throttled playback state snapshots.
 - Import and audio errors.
 - Uncaught exceptions with stack traces.
-- The current `TeachingUiState` and Android device information at export time.
+- The current Piano, Whack-a-MIDI, and Drum Sequence state snapshots plus Android device information at export time.
 
 To export diagnostics:
 
@@ -39,12 +39,20 @@ The application stores:
 
 - The last MIDI URI.
 - Per-library-entry selected track IDs.
+- Independent Drum Sequence track IDs for the same library entry.
 - A separate last-session selected-track set.
 - The last picker URI.
 - Playback speed and auto-trim preference.
 - Adjustable trim padding and keyboard zoom preference.
+- Per-source Piano and Drum Sequence loop settings, plus Drum Sequence source-note mappings.
 
 On launch, a multi-track MIDI only opens the track chooser when no saved track IDs match the parsed document. If the file changed and the saved IDs are no longer valid, prompting is intentional and prevents silently teaching the wrong tracks.
+
+## Drum Sequence troubleshooting
+
+- Confirm the imported source notes are mapped in **Source Map**; each used pitch must map to a logical target or be explicitly ignored.
+- Confirm **Drum Kit** maps the physical pad to the same logical target. Source mapping and physical-kit calibration are intentionally separate.
+- When reviewing a loop, capture the selected A/B range, stop rule, count-in state, pass count, and timing feedback from the exported `DRUM_SEQUENCE_STATE` entry.
 
 ## Useful adb commands
 

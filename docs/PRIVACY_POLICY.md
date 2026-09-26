@@ -7,8 +7,8 @@ MIDI Game Engine is designed to work locally on the user's Android device.
 ## Information the app accesses
 
 - MIDI files selected by the user through Android's system file picker.
-- MIDI input from a connected keyboard while the app is in use.
-- Local playback, layout, library, and diagnostic preferences.
+- MIDI input from a connected keyboard or drum kit while the app is in use.
+- Local playback, layout, library, loop, calibration, and diagnostic preferences.
 
 ## Information the app collects
 

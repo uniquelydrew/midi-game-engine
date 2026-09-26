@@ -1,129 +1,74 @@
 # MIDI Game Engine
 
-An Android MIDI practice and game application with two active modes:
+An Android MIDI practice and drum-training app with three experiences:
 
-- **Teaching** — practice Standard MIDI files against a synchronized note highway, on-screen keyboard, synthesized playback, and physical MIDI input.
-- **Whack-a-MIDI** — connect a MIDI drum kit and strike the highlighted drum target as quickly and accurately as possible.
+- **Piano Practice** — follow imported Standard MIDI files on a synchronized note highway with keyboard input and synthesized playback.
+- **Whack-a-MIDI** — a reactive drum-pad target game for a calibrated physical kit.
+- **Drum Sequence Training** — practice imported MIDI drum sequences with timing feedback, scoring, count-in, and looped repetition.
 
-## Documentation
+## Navigation
 
-- [UX concept spec](docs/UX_CONCEPT_SPEC.md) - product and interaction model.
-- [Debugging](docs/DEBUGGING.md) - diagnostic workflow and log export.
-- [Play Store release](docs/PLAY_STORE_RELEASE.md) - release build and signing process.
+The app opens on **Home**. Choose **Piano Practice**, or choose **Drums** and then select **Whack-a-MIDI** or **Sequence Training**. **Home** returns to this selection without discarding each experience's saved setup.
 
-## Teaching Workflow
+## Piano Practice
 
-1. Import a Standard MIDI file with **Import MIDI**.
-2. Select one or more tracks when a file contains multiple tracks.
-3. Use **Track** to change the teaching selection after import.
-4. Use **Layout** to choose the physical keyboard profile and visible MIDI range.
-5. Press **Play**, scrub the timeline, adjust speed, and practice against the visualizer.
-6. Reopen imported files from **Library**. The source MIDI, selected tracks, layout, trim preference, and playback speed are persisted locally.
+1. Use **Import MIDI**, select tracks when prompted, and configure **Layout** as desired.
+2. Play, pause, scrub, restart, adjust speed, or change trim from the Piano controls.
+3. Use **Loop** to set A and B at the playhead, enter exact `m:ss` values, or drag the highlighted range handles.
+4. Choose forever, 4/8/16 passes, or 5/10/15/30 minutes. Paused time is excluded; duration sessions stop at B.
 
-The app keeps the complete parsed MIDI document as its source of truth. Track selection creates a derived playable chart without replacing the original MIDI data.
+Piano judgments are restricted to note onsets inside `[A, B)`. Each completed loop pass starts a fresh score; the last completed pass summary remains visible. Piano track choices and loop preferences are saved per source MIDI file.
 
-## Whack-a-MIDI Workflow
+## Drums
 
-1. Switch the mode selector to **Whack-a-MIDI**.
-2. Connect a class-compliant MIDI drum module.
-3. The game surface tells you what is needed: **Connect a MIDI drum kit** when none is connected, then **Configure your drum kit** when it has no mappings.
-4. Open **Configure Drum Kit** and either map each pad by striking it once or use the clearly separated **Use General MIDI Defaults** shortcut.
-5. Confirm the readiness message (for example, `Ready — 1 pad mapped`). Partial kits are playable and targets use only mapped pads.
-6. Choose a **Difficulty** preset: Relaxed, Standard, Fast, or Expert. Difficulty changes target timing, not drum mapping.
-7. Press **Start Game**. It becomes **Pause** while playing and **Resume** when paused; **Restart Game** resets score and session state.
-8. Strike the visually dominant highlighted drum target before it expires. Hits, misses, wrong-pad strikes, velocity, reaction times, score, and combo are tracked independently of the Teaching judgment engine.
+### Whack-a-MIDI
 
-Drum mappings are persisted per detected MIDI device. Target generation is constrained to mapped pads so the game does not request unavailable kit pieces.
+Connect a MIDI drum module, configure its pads through **Drum Kit** (or use General MIDI defaults), choose a difficulty, and start the game. Whack remains a reactive target game: its hit, miss, wrong-pad, combo, and reaction-time feedback are independent from sequence-training judgments.
+
+### Sequence Training
+
+1. Open **Drums → Sequence Training** and import a MIDI file.
+2. Select the drum tracks independently from Piano Practice.
+3. Configure the physical kit with **Drum Kit**. This maps physical MIDI notes to logical pads.
+4. Use **Source Map** to map each used source note to a logical drum target or explicitly ignore it. It starts with General MIDI defaults and is saved separately from kit calibration.
+5. Start practice. An optional four-beat visual/audible count-in occurs before starting and before loop restarts.
+
+Only NoteOn timing is scored: Perfect (≤50 ms) earns 100 points and Good (≤120 ms) earns 50. Misses, wrong-pad strikes, and extra strikes earn zero and do not consume a valid target. Score, counts, and timing error accumulate for the full loop session.
 
 ## Architecture
 
 ```text
-                           +----------------------+
-Standard MIDI file ------>| Teaching pipeline    |
-                           | SongModel             |
-Physical MIDI input ------>| PlayableChart         |
-            |              | JudgmentEngine        |
-            |              +----------------------+
-            |
-            +------------->+----------------------+
-                           | Whack-a-MIDI pipeline |
-                           | DrumKitProfile        |
-                           | DrumInputMapper       |
-                           | WhackGameSession      |
-                           | StrikeJudgmentEngine  |
-                           +----------------------+
+Standard MIDI file ─┬─> Piano: PlayableChart → Teaching judgment/session
+                    └─> Drums: DrumSequence → timing judgment/session
 
-Shared:
-- AndroidMidiInputReal
-- MidiEvent
-- monotonic Transport/Clock
-- local preferences
+Physical MIDI input ─┬─> Piano keyboard input
+                     ├─> calibrated Whack-a-MIDI target input
+                     └─> calibrated Drum Sequence strikes
+
+Shared: MIDI parsing, monotonic transport, A/B PracticeLoop, local preferences
 ```
 
-### Modules
+- `core`: parsing, charts, transport, loop state, piano and drum judgments, drum models, and visualization geometry.
+- `app`: Android UI, MIDI integration, persistence, synthesis, controllers, diagnostics, and custom views.
 
-- `core`: MIDI parsing, chart models, timing, teaching judgment, drum mapping, strike judgment, game runtime, and visualization geometry.
-- `app`: Android UI, MIDI device integration, persistence, playback, diagnostics, Teaching visualization, and Whack-a-MIDI visualization/controller.
-
-### MIDI Input Behavior
-
-- Android MIDI device discovery is instrument-neutral; USB hardware is preferred without keyboard- or brand-specific scoring.
-- `NoteOn`, `NoteOff`, and `ControlChange` are normalized into shared core events.
-- Android-provided monotonic MIDI timestamps are preserved and converted into transport-relative time when available.
-- A drum-kit calibration maps physical MIDI notes to logical targets such as kick, snare, hi-hat, toms, crash, and ride.
-- The Whack-a-MIDI surface includes a live MIDI monitor showing the latest note, channel, and velocity for hardware diagnostics.
-- Difficulty changes target lifetime and the delay between targets. Scoring rewards a correct hit, faster reactions, and sustained combo; strike velocity is recorded but does not increase score.
-
-## Building and Testing
+## Building and testing
 
 From the project root on Windows:
 
 ```powershell
-.\gradlew.bat :core:testDebugUnitTest
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :core:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The debug APK is written to:
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
+## Documentation
 
-For Play Store signing, privacy, listing, and release verification, see [docs/PLAY_STORE_RELEASE.md](docs/PLAY_STORE_RELEASE.md), [docs/PLAY_STORE_LISTING.md](docs/PLAY_STORE_LISTING.md), and [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+- [UX concept spec](docs/UX_CONCEPT_SPEC.md)
+- [Debugging](docs/DEBUGGING.md)
+- [Play Store listing](docs/PLAY_STORE_LISTING.md)
+- [Play Store release](docs/PLAY_STORE_RELEASE.md)
+- [Privacy policy](docs/PRIVACY_POLICY.md)
 
-Install it on a connected device or emulator with:
+## Project status
 
-```powershell
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Android Verification Checklist
-
-Teaching:
-
-- Import a single-track `.mid` file.
-- Import a multi-track file and select tracks.
-- Change tracks after import and confirm the chart changes without replacing the source file.
-- Rotate portrait to landscape and back while paused and while playing.
-- Scrub, restart, change playback speed, and verify audio and visuals remain synchronized.
-- Reopen the file from **Library** and confirm the selected tracks are restored.
-- Connect a MIDI keyboard and verify physical notes, expected notes, and judgment feedback use the same pitch mapping.
-
-Whack-a-MIDI:
-
-- Connect a MIDI drum module and confirm it is detected without keyboard-specific assumptions.
-- Confirm the no-device surface says **Connect a MIDI drum kit**, and a connected unmapped kit says **Configure your drum kit**.
-- Map at least two pads with **Drum Kit** and confirm the mappings persist after reopening the app.
-- Start Whack-a-MIDI with one mapped pad and confirm it is playable and only mapped pads are selected as targets.
-- Confirm correct hits record reaction time and velocity and increase score/combo.
-- Confirm wrong-pad strikes are counted without consuming the current target and reset combo.
-- Change difficulty and confirm target lifetime/gap timing changes and persists across restart.
-- Confirm the live MIDI monitor updates for NoteOn input, including unmapped notes.
-- Confirm expired targets are recorded as misses.
-- Verify pause/resume and restart preserve or reset the game state as intended.
-
-Use **Export Logs** after any crash or unexpected behavior.
-
-## Project Status
-
-This is an actively developed MVP. Teaching mode is functional, and Whack-a-MIDI now has an independent drum-input game loop and Android surface. Hardware validation across multiple drum modules and further gameplay tuning remain in progress.
+This is an actively developed local-first MVP. Validate MIDI hardware behavior across keyboards and drum modules before release.
