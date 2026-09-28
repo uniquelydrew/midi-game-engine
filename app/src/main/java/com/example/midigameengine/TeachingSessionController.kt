@@ -21,6 +21,9 @@ import core.model.SongModel
 import core.model.SongNote
 import core.model.SongTrack
 import core.runtime.GameSessionStateful
+import core.runtime.LoopStopRule
+import core.runtime.PracticeLoop
+import core.runtime.PracticeLoopSession
 import core.time.SystemClock
 import core.time.Transport
 import core.visualization.KeyboardProfile
@@ -75,6 +78,10 @@ class TeachingSessionController(
     private var playbackWindow = PlaybackWindow(0L, 0L)
     private var scrubbing = false
     private var gameMode = preferences.gameMode()
+    private var practiceLoop: PracticeLoop? = null
+    private var loopStopRule: LoopStopRule = LoopStopRule.Forever
+    private var loopSession: PracticeLoopSession? = null
+    private var lastLoopPassScore: Int? = null
 
     private val frameRunnable = object : Runnable {
         override fun run() {
@@ -172,8 +179,10 @@ class TeachingSessionController(
     fun play() {
         AppDebugLogger.log("Play requested")
         synchronized(lock) {
-            if (transport.positionNs() / 1000L >= playbackWindow.endUs) {
-                synchronizeSessionTo(playbackWindow.startUs, false)
+            val activeEnd = practiceLoop?.endUs ?: playbackWindow.endUs
+            val activeStart = practiceLoop?.startUs ?: playbackWindow.startUs
+            if (transport.positionNs() / 1000L >= activeEnd) {
+                synchronizeSessionTo(activeStart, false)
             }
             transport.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
@@ -181,6 +190,7 @@ class TeachingSessionController(
             if (!playing) {
                 transport.resume()
                 playing = true
+                loopSession?.start(System.nanoTime())
                 currentHeadline = "Playing"
                 playbackSynth.sync(transport.positionNs() / 1000L, true)
             }
@@ -194,6 +204,7 @@ class TeachingSessionController(
             if (playing) {
                 transport.pause()
                 playing = false
+                loopSession?.pause(System.nanoTime())
                 currentHeadline = "Paused"
                 playbackSynth.sync(transport.positionNs() / 1000L, false)
             }
@@ -204,11 +215,14 @@ class TeachingSessionController(
     fun restart() {
         AppDebugLogger.log("Restart requested")
         synchronized(lock) {
-            synchronizeSessionTo(playbackWindow.startUs, true)
+            loopSession?.reset()
+            lastLoopPassScore = null
+            synchronizeSessionTo(practiceLoop?.startUs ?: playbackWindow.startUs, true)
             transport.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
             transport.resume()
             playing = true
+            loopSession?.start(System.nanoTime())
             currentHeadline = "Restarted"
         }
         emitState()
@@ -375,12 +389,75 @@ class TeachingSessionController(
         emitState()
     }
 
+    fun setPracticeLoop(startUs: Long, endUs: Long) {
+        synchronized(lock) {
+            val start = startUs.coerceIn(playbackWindow.startUs, playbackWindow.endUs)
+            val end = endUs.coerceIn(playbackWindow.startUs, playbackWindow.endUs)
+            if (end <= start) return@synchronized
+            practiceLoop = PracticeLoop(start, end)
+            loopSession = PracticeLoopSession(loopStopRule)
+            lastLoopPassScore = null
+            synchronizeSessionTo(start, false)
+            currentHeadline = "Loop ${formatTime(start)} to ${formatTime(end)}"
+            saveLoopPreference()
+        }
+        emitState()
+    }
+
+    fun clearPracticeLoop() {
+        synchronized(lock) {
+            practiceLoop = null
+            loopSession = null
+            lastLoopPassScore = null
+            synchronizeSessionTo(transport.positionNs() / 1_000L, false)
+            currentHeadline = "Loop cleared"
+            saveLoopPreference()
+        }
+        emitState()
+    }
+
+    fun setLoopStopRule(rule: LoopStopRule) {
+        synchronized(lock) {
+            loopStopRule = rule
+            practiceLoop?.let { loop ->
+                loopSession = PracticeLoopSession(rule)
+                synchronizeSessionTo(loop.startUs, false)
+            }
+            saveLoopPreference()
+        }
+        emitState()
+    }
+
+    fun setLoopStartAtPlayhead() {
+        synchronized(lock) {
+            val now = transport.positionNs() / 1_000L
+            val end = practiceLoop?.endUs ?: playbackWindow.endUs
+            if (now < end) setPracticeLoop(now, end)
+        }
+    }
+
+    fun setLoopEndAtPlayhead() {
+        synchronized(lock) {
+            val now = transport.positionNs() / 1_000L
+            val start = practiceLoop?.startUs ?: playbackWindow.startUs
+            if (now > start) setPracticeLoop(start, now)
+        }
+    }
+
+    fun currentLoop(): PracticeLoop? = synchronized(lock) { practiceLoop }
+
+    fun currentLoopStopRule(): LoopStopRule = synchronized(lock) { loopStopRule }
+
     fun setGameMode(mode: GameMode) {
         synchronized(lock) {
             gameMode = mode
             preferences.setGameMode(mode)
             currentHeadline = when (mode) {
+                GameMode.HOME -> "Choose an instrument"
                 GameMode.TEACHING -> "Teaching mode"
+                GameMode.DRUMS_HUB -> "Drums selected"
+                GameMode.DRUM_KIT_CONFIG -> "Drum kit configuration selected"
+                GameMode.DRUM_SEQUENCE -> "Drum sequence training selected"
                 GameMode.GAME -> "Game mode selected; teaching engine active"
             }
         }
@@ -399,6 +476,7 @@ class TeachingSessionController(
             if (playing) {
                 transport.pause()
                 playing = false
+                loopSession?.pause(System.nanoTime())
             }
         }
         emitState()
@@ -406,8 +484,9 @@ class TeachingSessionController(
 
     fun scrubToFraction(fraction: Float) {
         synchronized(lock) {
-            val position = playbackWindow.startUs +
-                (playbackWindow.durationUs * fraction.coerceIn(0f, 1f)).toLong()
+            val window = practiceLoop?.let { PlaybackWindow(it.startUs, it.endUs) } ?: playbackWindow
+            val position = window.startUs +
+                (window.durationUs * fraction.coerceIn(0f, 1f)).toLong()
             synchronizeSessionTo(position, false)
         }
         emitState()
@@ -422,7 +501,8 @@ class TeachingSessionController(
 
     fun seekRelative(deltaUs: Long) {
         synchronized(lock) {
-            val target = playbackWindow.clamp(transport.positionNs() / 1000L + deltaUs)
+            val window = practiceLoop?.let { PlaybackWindow(it.startUs, it.endUs) } ?: playbackWindow
+            val target = window.clamp(transport.positionNs() / 1000L + deltaUs)
             synchronizeSessionTo(target, playing)
             currentHeadline = if (deltaUs < 0L) {
                 "Seeking backward"
@@ -528,6 +608,19 @@ class TeachingSessionController(
             currentSourceLabel = sourceLabel
             currentHeadline = "Loaded ${sourceLabel}"
             recalculatePlaybackWindow()
+            val savedLoop = uri?.let { preferences.loopPreference(GameMode.TEACHING, it.toString()) }
+            if (savedLoop != null) {
+                val start = savedLoop.startUs.coerceIn(playbackWindow.startUs, playbackWindow.endUs)
+                val end = savedLoop.endUs.coerceIn(playbackWindow.startUs, playbackWindow.endUs)
+                if (end > start) {
+                    practiceLoop = PracticeLoop(start, end)
+                    loopStopRule = savedLoop.stopRule
+                    loopSession = PracticeLoopSession(loopStopRule)
+                }
+            } else {
+                practiceLoop = null
+                loopSession = null
+            }
             transport.setRate(playbackSettings.normalizedSpeed)
             playbackSynth.setRate(playbackSettings.normalizedSpeed)
             playing = startPlaying
@@ -563,7 +656,11 @@ class TeachingSessionController(
     /** Keeps runtime judgment, transport, physical-key state, and synth at one timeline position. */
     private fun synchronizeSessionTo(positionUs: Long, shouldPlay: Boolean) {
         val target = playbackWindow.clamp(positionUs)
-        session = newSession(currentChart)
+        val loop = practiceLoop
+        val scopedChart = if (loop == null) currentChart else PlayableChart(
+            currentChart.events.filter { loop.contains(it.targetTimeUs) }
+        )
+        session = newSession(scopedChart)
         physicalHeldPitches.clear()
         lastInputPitch = null
         lastInputCorrect = null
@@ -571,6 +668,16 @@ class TeachingSessionController(
         finalScorePercent = null
         transport.seekTo(target)
         playbackSynth.seek(target, shouldPlay)
+    }
+
+    private fun saveLoopPreference() {
+        val source = currentUri?.toString() ?: return
+        val loop = practiceLoop
+        preferences.saveLoopPreference(
+            GameMode.TEACHING,
+            source,
+            loop?.let { LoopPreference(it.startUs, it.endUs, loopStopRule) }
+        )
     }
 
     private fun trackChoices(song: SongModel, selectedIds: Set<String>): List<TrackChoice> {
@@ -615,7 +722,20 @@ class TeachingSessionController(
         val snapshot = synchronized(lock) {
             if (released) return
             val rawTimeUs = transport.positionNs() / 1000L
-            if (playing && playbackWindow.durationUs > 0L && rawTimeUs >= playbackWindow.endUs) {
+            val loop = practiceLoop
+            if (playing && loop != null && rawTimeUs >= loop.endUs) {
+                lastLoopPassScore = session.scoreSummary().scorePercent
+                val complete = loopSession?.completePass(System.nanoTime()) == true
+                if (complete) {
+                    transport.seekTo(loop.endUs)
+                    transport.pause()
+                    playing = false
+                    currentHeadline = "Loop complete - Final pass $lastLoopPassScore%"
+                } else {
+                    synchronizeSessionTo(loop.startUs, true)
+                    currentHeadline = "Loop pass ${(loopSession?.snapshot(System.nanoTime())?.completedPasses ?: 0) + 1}"
+                }
+            } else if (playing && playbackWindow.durationUs > 0L && rawTimeUs >= playbackWindow.endUs) {
                 transport.seekTo(playbackWindow.endUs)
                 transport.pause()
                 playing = false
@@ -646,13 +766,14 @@ class TeachingSessionController(
                 currentTimeUs in it.startTimeUs..(it.startTimeUs + it.durationUs)
             }
             val nextExpectedNotes = notes.filterNot { it.matched }.take(8)
-            val chartLengthUs = playbackWindow.durationUs
+            val activeWindow = loop?.let { PlaybackWindow(it.startUs, it.endUs) } ?: playbackWindow
+            val chartLengthUs = activeWindow.durationUs
             val summary = session.scoreSummary()
             val liveScorePoints = (summary.perfectCount * 100) + (summary.goodCount * 50)
             val progress = if (chartLengthUs <= 0L) {
                 0f
             } else {
-                ((currentTimeUs - playbackWindow.startUs).toFloat() / chartLengthUs.toFloat()).coerceIn(0f, 1f)
+                ((currentTimeUs - activeWindow.startUs).toFloat() / chartLengthUs.toFloat()).coerceIn(0f, 1f)
             }
 
             TeachingUiState(
@@ -702,6 +823,13 @@ class TeachingSessionController(
                 autoTrimEnabled = playbackSettings.autoTrimEnabled,
                 trimPaddingMs = playbackSettings.normalizedTrimPaddingMs,
                 keyboardZoomLabel = keyboardZoom.label,
+                loopEnabled = loop != null,
+                loopStartUs = loop?.startUs,
+                loopEndUs = loop?.endUs,
+                loopRuleLabel = loopStopRule.label(),
+                loopCompletedPasses = loopSession?.snapshot(System.nanoTime())?.completedPasses ?: 0,
+                loopActiveElapsedMs = loopSession?.snapshot(System.nanoTime())?.activeElapsedMs ?: 0L,
+                lastLoopPassScore = lastLoopPassScore,
                 isPlaying = playing,
                 isScrubbing = scrubbing
             )
@@ -738,5 +866,16 @@ class TeachingSessionController(
                 null -> "Miss"
             }
         }
+    }
+
+    private fun LoopStopRule.label(): String = when (this) {
+        LoopStopRule.Forever -> "Forever"
+        is LoopStopRule.PassCount -> "$passes passes"
+        is LoopStopRule.Duration -> "${durationMs / 60_000L} min"
+    }
+
+    private fun formatTime(timeUs: Long): String {
+        val seconds = (timeUs.coerceAtLeast(0L) / 1_000_000L).toInt()
+        return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
     }
 }

@@ -8,7 +8,9 @@ import android.media.midi.MidiOutputPort
 import android.media.midi.MidiReceiver
 import android.os.Handler
 import android.os.Looper
+import core.midi.ChannelMidiMessage
 import core.midi.ControlChange
+import core.midi.MidiByteStreamParser
 import core.midi.MidiEvent
 import core.midi.MidiInput
 import core.midi.NoteOff
@@ -27,6 +29,7 @@ class AndroidMidiInputReal(
     private var deviceInfo: MidiDeviceInfo? = null
     private var outputPort: MidiOutputPort? = null
     private var registered = false
+    private val streamParser = MidiByteStreamParser()
 
     private val midiManager by lazy {
         context.getSystemService(Context.MIDI_SERVICE) as MidiManager
@@ -78,9 +81,9 @@ class AndroidMidiInputReal(
     }
 
     private fun connectToBestAvailableDevice() {
-        val devices = midiManager.devices
+        val devices = midiManager.devices.filter { it.outputPortCount > 0 }
         if (devices.isEmpty()) {
-            reportStatus("Waiting for a MIDI device")
+            reportStatus("Waiting for a MIDI input device")
             return
         }
 
@@ -93,16 +96,32 @@ class AndroidMidiInputReal(
         reportStatus("Connecting to ${describeDevice(selected)}")
 
         midiManager.openDevice(selected, openDeviceCallback@{ openedDevice ->
-            val opened = openedDevice ?: return@openDeviceCallback
+            val opened = openedDevice ?: run {
+                reportStatus("Could not open ${describeDevice(selected)}")
+                return@openDeviceCallback
+            }
             device = opened
             deviceInfo = selected
 
-            val port = opened.openOutputPort(0) ?: return@openDeviceCallback
+            val portNumber = selected.ports
+                .firstOrNull { it.type == MidiDeviceInfo.PortInfo.TYPE_OUTPUT }
+                ?.portNumber
+                ?: run {
+                    reportStatus("${describeDevice(selected)} has no readable MIDI output port")
+                    disconnect()
+                    return@openDeviceCallback
+                }
+
+            val port = opened.openOutputPort(portNumber) ?: run {
+                reportStatus("Could not open MIDI port on ${describeDevice(selected)}")
+                disconnect()
+                return@openDeviceCallback
+            }
             outputPort = port
 
             port.connect(object : MidiReceiver() {
                 override fun onSend(data: ByteArray, offset: Int, count: Int, timestamp: Long) {
-                    parseMidi(data, offset, count)
+                    parseMidi(data, offset, count, timestamp)
                 }
             })
 
@@ -117,6 +136,7 @@ class AndroidMidiInputReal(
         device?.close()
         device = null
         deviceInfo = null
+        streamParser.reset()
     }
 
     private fun reportStatus(message: String) {
@@ -130,43 +150,53 @@ class AndroidMidiInputReal(
         return if (manufacturer.isNullOrBlank()) name else "$manufacturer $name"
     }
 
+    /**
+     * Prefer direct hardware transports without making assumptions about the
+     * attached instrument. Keyboards, drum modules, pad controllers, and other
+     * class-compliant MIDI devices are intentionally scored the same by name.
+     */
     private fun scoreDevice(info: MidiDeviceInfo): Int {
-        val props = info.properties
-        val name = buildString {
-            append(props.getString(MidiDeviceInfo.PROPERTY_MANUFACTURER))
-            append(' ')
-            append(props.getString(MidiDeviceInfo.PROPERTY_NAME))
-        }.lowercase()
+        val transportScore = when (info.type) {
+            MidiDeviceInfo.TYPE_USB -> 300
+            MidiDeviceInfo.TYPE_BLUETOOTH -> 200
+            MidiDeviceInfo.TYPE_VIRTUAL -> 100
+            else -> 0
+        }
+        return transportScore + info.outputPortCount
+    }
 
-        return when {
-            "casio" in name -> 100
-            "keyboard" in name -> 80
-            "midi" in name -> 50
-            else -> 10
+    private fun parseMidi(
+        data: ByteArray,
+        offset: Int,
+        count: Int,
+        timestampNs: Long
+    ) {
+        val timeUs = if (timestampNs > 0L) {
+            transport.positionAtClockNs(timestampNs) / 1_000L
+        } else {
+            transport.positionNs() / 1_000L
+        }
+
+        streamParser.feed(data, offset, count).forEach { message ->
+            toMidiEvent(message, timeUs)?.let { listener?.invoke(it) }
         }
     }
 
-    private fun parseMidi(data: ByteArray, offset: Int, count: Int) {
-        val status = data[offset].toInt() and 0xFF
-        val command = status and 0xF0
-        val channel = status and 0x0F
-
-        val pitch = data.getOrNull(offset + 1)?.toInt()?.and(0xFF) ?: return
-        val velocity = data.getOrNull(offset + 2)?.toInt()?.and(0xFF) ?: 0
-
-        val timeUs = transport.positionNs() / 1000
-
-        val event: MidiEvent? = when (command) {
-            0x90 -> if (velocity > 0) {
-                NoteOn(timeUs, pitch, velocity, channel)
+    private fun toMidiEvent(
+        message: ChannelMidiMessage,
+        timestampUs: Long
+    ): MidiEvent? {
+        val value = message.data2 ?: 0
+        return when (message.command) {
+            0x90 -> if (value > 0) {
+                NoteOn(timestampUs, message.data1, value, message.channel)
             } else {
-                NoteOff(timeUs, pitch, channel)
+                NoteOff(timestampUs, message.data1, message.channel)
             }
-            0x80 -> NoteOff(timeUs, pitch, channel)
-            0xB0 -> ControlChange(timeUs, pitch, velocity, channel)
+            0x80 -> NoteOff(timestampUs, message.data1, message.channel)
+            0xB0 -> ControlChange(timestampUs, message.data1, value, message.channel)
             else -> null
         }
-
-        event?.let { listener?.invoke(it) }
     }
+
 }

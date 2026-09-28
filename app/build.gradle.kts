@@ -64,6 +64,8 @@ dependencies {
     implementation(project(":core"))
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    testImplementation(kotlin("test"))
+    testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {
