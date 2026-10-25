@@ -1057,8 +1057,9 @@ class MainActivity : AppCompatActivity() {
         drumKitLayoutView = DrumKitLayoutView(this@MainActivity).apply {
             editable = true
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-            onSelect = { target -> drumKitConfigController.learn(target) }
+            onSelect = { target -> drumKitConfigController.bringToFront(target); drumKitConfigController.learn(target) }
             onMove = { target, x, y -> drumKitConfigController.move(target, x, y) }
+            onResize = { target, scale -> drumKitConfigController.resize(target, scale) }
         }
         addView(drumKitLayoutView)
         val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
@@ -1074,7 +1075,7 @@ class MainActivity : AppCompatActivity() {
         if (!::drumKitLayoutView.isInitialized) return
         val profile = state.active
         drumKitConfigProfile.text = "Configure Drum Kit — ${profile.name}"
-        drumKitConfigStatus.text = "${state.deviceStatus} • ${profile.availableTargets().size} pads mapped" +
+        drumKitConfigStatus.text = "${state.deviceStatus} • ${profile.availableTargets().size} pads mapped • drag to move, pinch to resize" +
             (state.learningTarget?.let { " • Hit ${it.label}" } ?: "")
         drumKitLayoutView.selectedTarget = state.learningTarget
         drumKitLayoutView.submit(profile.layout, profile.availableTargets().toSet())
