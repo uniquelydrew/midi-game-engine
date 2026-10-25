@@ -2,6 +2,7 @@ package com.example.midigameengine
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
@@ -20,6 +21,11 @@ class WhackGameView(context: Context) : View(context) {
     private val padPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+    private val componentImages = DrumTarget.values().associateWith { target ->
+        BitmapFactory.decodeResource(resources, resources.getIdentifier(resourceName(target), "drawable", context.packageName))
+    }
+    private val kitPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val feedbackOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val padStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 4f
@@ -133,22 +139,24 @@ class WhackGameView(context: Context) : View(context) {
         val kitHeight = (kitBottom - kitTop).coerceAtLeast(1f)
         val pads = buildPadRects(widthF, kitTop, kitHeight, state.layout)
 
-        pads.forEach { (target, rect) ->
+        val zOrder = state.layout.associate { it.target to it.zIndex }
+        pads.entries.sortedBy { zOrder[it.key] ?: 0 }.forEach { (target, rect) ->
             val mapped = target in state.mappedTargets
             val active = state.targetActive && state.target == target
             val last = state.lastStrikeTarget == target
 
-            padPaint.color = when {
-                active -> Color.rgb(255, 181, 46)
-                last && state.lastOutcome == StrikeOutcome.HIT -> Color.rgb(65, 181, 111)
-                last && state.lastOutcome == StrikeOutcome.WRONG_TARGET -> Color.rgb(202, 75, 78)
-                last && state.lastOutcome == StrikeOutcome.MISS -> Color.rgb(135, 68, 72)
-                mapped -> Color.rgb(61, 72, 89)
-                else -> Color.rgb(34, 39, 49)
+            componentImages[target]?.let { canvas.drawBitmap(it, null, rect, kitPaint) }
+            val feedbackColor = when {
+                active -> Color.argb(120, 255, 181, 46)
+                last && state.lastOutcome == StrikeOutcome.HIT -> Color.argb(110, 65, 181, 111)
+                last && state.lastOutcome == StrikeOutcome.WRONG_TARGET -> Color.argb(110, 202, 75, 78)
+                last && state.lastOutcome == StrikeOutcome.MISS -> Color.argb(100, 135, 68, 72)
+                else -> Color.TRANSPARENT
             }
-
-            canvas.drawOval(rect, padPaint)
-            canvas.drawOval(rect, padStrokePaint)
+            if (feedbackColor != Color.TRANSPARENT) {
+                feedbackOverlayPaint.color = feedbackColor
+                canvas.drawRoundRect(rect, 18f, 18f, feedbackOverlayPaint)
+            }
             if (active) {
                 val inset = 7f * density
                 canvas.drawOval(
@@ -163,7 +171,7 @@ class WhackGameView(context: Context) : View(context) {
             }
 
             textPaint.textSize = 12f * density
-            textPaint.color = if (mapped || active) Color.WHITE else Color.rgb(110, 117, 128)
+            textPaint.color = if (mapped || active) Color.WHITE else Color.rgb(170, 177, 188)
             canvas.drawText(
                 target.label,
                 rect.centerX(),
@@ -195,6 +203,13 @@ class WhackGameView(context: Context) : View(context) {
         }
     }
 
+    private fun resourceName(target: DrumTarget): String = when (target) {
+        DrumTarget.CRASH -> "drum_crash"; DrumTarget.RIDE -> "drum_ride"
+        DrumTarget.TOM_1, DrumTarget.TOM_2 -> "drum_tom"
+        DrumTarget.HI_HAT -> "drum_hihat"; DrumTarget.SNARE -> "drum_snare"
+        DrumTarget.FLOOR_TOM -> "drum_floor_tom"; DrumTarget.KICK -> "drum_kick"
+    }
+
     private fun drawOnboarding(canvas: Canvas, widthF: Float, heightF: Float, density: Float) {
         textPaint.textSize = 25f * density
         val title = if (state.readiness == WhackReadiness.NO_DEVICE) {
@@ -221,28 +236,26 @@ class WhackGameView(context: Context) : View(context) {
         layout: List<core.drums.DrumKitLayoutPiece>
     ): Map<DrumTarget, RectF> {
         val unit = min(widthF, heightF)
-        val cymbalW = unit * 0.25f
-        val cymbalH = unit * 0.11f
-        val drumW = unit * 0.22f
-        val drumH = unit * 0.16f
+        val cymbalSize = unit * 0.25f
+        val drumSize = unit * 0.23f
 
         fun centered(cx: Float, cy: Float, w: Float, h: Float): RectF =
             RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
 
         val defaults = mapOf(
-            DrumTarget.CRASH to centered(widthF * 0.20f, top + heightF * 0.12f, cymbalW, cymbalH),
-            DrumTarget.RIDE to centered(widthF * 0.80f, top + heightF * 0.12f, cymbalW, cymbalH),
-            DrumTarget.TOM_1 to centered(widthF * 0.40f, top + heightF * 0.32f, drumW, drumH),
-            DrumTarget.TOM_2 to centered(widthF * 0.60f, top + heightF * 0.32f, drumW, drumH),
-            DrumTarget.HI_HAT to centered(widthF * 0.16f, top + heightF * 0.52f, cymbalW, cymbalH),
-            DrumTarget.SNARE to centered(widthF * 0.38f, top + heightF * 0.57f, drumW, drumH),
-            DrumTarget.FLOOR_TOM to centered(widthF * 0.72f, top + heightF * 0.58f, drumW, drumH),
-            DrumTarget.KICK to centered(widthF * 0.52f, top + heightF * 0.80f, drumW * 1.08f, drumH * 1.15f)
+            DrumTarget.CRASH to centered(widthF * 0.20f, top + heightF * 0.12f, cymbalSize, cymbalSize),
+            DrumTarget.RIDE to centered(widthF * 0.80f, top + heightF * 0.12f, cymbalSize, cymbalSize),
+            DrumTarget.TOM_1 to centered(widthF * 0.40f, top + heightF * 0.32f, drumSize, drumSize),
+            DrumTarget.TOM_2 to centered(widthF * 0.60f, top + heightF * 0.32f, drumSize, drumSize),
+            DrumTarget.HI_HAT to centered(widthF * 0.16f, top + heightF * 0.52f, cymbalSize, cymbalSize),
+            DrumTarget.SNARE to centered(widthF * 0.38f, top + heightF * 0.57f, drumSize, drumSize),
+            DrumTarget.FLOOR_TOM to centered(widthF * 0.72f, top + heightF * 0.58f, drumSize, drumSize),
+            DrumTarget.KICK to centered(widthF * 0.52f, top + heightF * 0.80f, drumSize * 1.18f, drumSize * 1.18f)
         )
         if (layout.isEmpty()) return defaults
         return layout.filter { it.visible }.associate { piece ->
             val fallback = defaults[piece.target]!!
-            piece.target to centered(widthF * piece.xFraction, top + heightF * piece.yFraction, fallback.width(), fallback.height())
+            piece.target to centered(widthF * piece.xFraction, top + heightF * piece.yFraction, fallback.width() * piece.scale, fallback.height() * piece.scale)
         }
     }
 }
