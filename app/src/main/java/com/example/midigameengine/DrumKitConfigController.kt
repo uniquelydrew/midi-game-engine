@@ -3,6 +3,7 @@ package com.example.midigameengine
 import android.content.Context
 import android.midi.AndroidMidiInputReal
 import core.drums.DrumKitProfile
+import core.drums.DrumKitLayoutPiece
 import core.drums.DrumKitProfiles
 import core.drums.DrumTarget
 import core.drums.DrumTrigger
@@ -50,6 +51,11 @@ class DrumKitConfigController(private val context: Context, private val onChange
     fun useGeneralMidi() { updateActive { DrumKitProfiles.generalMidi(it.name).copy(layout = it.layout) } }
     fun setVisible(target: DrumTarget, visible: Boolean) = updateActive { p -> p.copy(layout = p.layout.map { if (it.target == target) it.copy(visible = visible) else it }) }
     fun move(target: DrumTarget, x: Float, y: Float) = updateActive { p -> p.copy(layout = p.layout.map { if (it.target == target) it.copy(xFraction = x.coerceIn(0f, 1f), yFraction = y.coerceIn(0f, 1f)) else it }) }
+    fun resize(target: DrumTarget, scale: Float) = updateActive { p -> p.copy(layout = p.layout.map { if (it.target == target) it.copy(scale = scale.coerceIn(DrumKitLayoutPiece.MIN_SCALE, DrumKitLayoutPiece.MAX_SCALE)) else it }) }
+    fun bringToFront(target: DrumTarget) = updateActive { p ->
+        val top = p.layout.maxOfOrNull { it.zIndex } ?: 0
+        p.copy(layout = p.layout.map { if (it.target == target) it.copy(zIndex = top + 1) else it })
+    }
     fun learn(target: DrumTarget) { learning = target; emit() }
     fun cancelLearn() { learning = null; emit() }
     private fun addProfile(name: String, profile: DrumKitProfile) { if (name.isBlank() || library.profiles.any { it.name == name }) return; save(DrumKitProfileLibrary(name, library.profiles + profile)) }

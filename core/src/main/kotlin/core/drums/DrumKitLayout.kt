@@ -5,11 +5,22 @@ data class DrumKitLayoutPiece(
     val target: DrumTarget,
     val visible: Boolean = true,
     val xFraction: Float,
-    val yFraction: Float
+    val yFraction: Float,
+    /** User-controlled uniform scale. Rendering always applies this to both axes. */
+    val scale: Float = 1f,
+    /** Higher values draw over lower values when kit pieces overlap. */
+    val zIndex: Int = 0
 ) {
     init {
         require(xFraction in 0f..1f) { "Layout x must be normalized" }
         require(yFraction in 0f..1f) { "Layout y must be normalized" }
+        require(scale in MIN_SCALE..MAX_SCALE) { "Layout scale must be within supported bounds" }
+        require(zIndex >= 0) { "Layout z-index cannot be negative" }
+    }
+
+    companion object {
+        const val MIN_SCALE = .55f
+        const val MAX_SCALE = 1.75f
     }
 }
 
