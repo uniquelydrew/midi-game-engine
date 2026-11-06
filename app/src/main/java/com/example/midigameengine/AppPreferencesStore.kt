@@ -204,7 +204,7 @@ class AppPreferencesStore(context: Context) {
             .put("name", profile.name)
             .put("triggers", triggers)
             .put("layout", JSONArray().apply { profile.layout.forEach { piece ->
-                put(JSONObject().put("target", piece.target.name).put("visible", piece.visible).put("x", piece.xFraction).put("y", piece.yFraction))
+                put(JSONObject().put("target", piece.target.name).put("visible", piece.visible).put("x", piece.xFraction).put("y", piece.yFraction).put("scale", piece.scale).put("z", piece.zIndex))
             } })
     }
 
@@ -219,7 +219,7 @@ class AppPreferencesStore(context: Context) {
         val layout = (root.optJSONArray("layout") ?: JSONArray()).let { array -> buildList { for (i in 0 until array.length()) {
             val item = array.optJSONObject(i) ?: continue
             val target = runCatching { DrumTarget.valueOf(item.getString("target")) }.getOrNull() ?: continue
-            add(DrumKitLayoutPiece(target, item.optBoolean("visible", true), item.optDouble("x", .5).toFloat().coerceIn(0f, 1f), item.optDouble("y", .5).toFloat().coerceIn(0f, 1f)))
+            add(DrumKitLayoutPiece(target, item.optBoolean("visible", true), item.optDouble("x", .5).toFloat().coerceIn(0f, 1f), item.optDouble("y", .5).toFloat().coerceIn(0f, 1f), item.optDouble("scale", 1.0).toFloat().coerceIn(DrumKitLayoutPiece.MIN_SCALE, DrumKitLayoutPiece.MAX_SCALE), item.optInt("z", 0).coerceAtLeast(0)))
         } } }
         return DrumKitProfile(root.optString("name", "Drum kit"), triggers, DrumKitLayouts.normalized(layout))
     }

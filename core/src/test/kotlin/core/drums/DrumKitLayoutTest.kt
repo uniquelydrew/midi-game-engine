@@ -10,6 +10,8 @@ class DrumKitLayoutTest {
         val layout = DrumKitLayouts.standard()
         assertEquals(DrumTarget.values().toSet(), layout.map { it.target }.toSet())
         assertEquals(layout.size, layout.map { it.target }.distinct().size)
+        assertTrue(layout.all { it.visible && it.scale == 1f })
+        assertEquals(DrumTarget.values().size, layout.map { it.zIndex }.distinct().size)
     }
 
     @Test fun `normalizing preserves removed piece and fills missing targets`() {

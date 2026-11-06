@@ -1057,24 +1057,29 @@ class MainActivity : AppCompatActivity() {
         drumKitLayoutView = DrumKitLayoutView(this@MainActivity).apply {
             editable = true
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-            onSelect = { target -> drumKitConfigController.learn(target) }
+            onSelect = { target -> drumKitConfigController.bringToFront(target); drumKitConfigController.learn(target) }
             onMove = { target, x, y -> drumKitConfigController.move(target, x, y) }
+            onResize = { target, scale -> drumKitConfigController.resize(target, scale) }
         }
         addView(drumKitLayoutView)
         val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
         fun action(label: String, click: () -> Unit) = Button(this@MainActivity).apply { text = label; setOnClickListener { click() } }
         actions.addView(action("Profiles") { showDrumProfileDialog() }, buttonParams())
         actions.addView(action("Add / Remove") { showDrumPieceDialog() }, buttonParams())
-        actions.addView(action("General MIDI") { drumKitConfigController.useGeneralMidi() }, buttonParams())
+        actions.addView(action("Reset Layout") { drumKitConfigController.resetVisualLayout() }, buttonParams())
         actions.addView(action("Drums") { switchMode(GameMode.DRUMS_HUB) }, buttonParams())
         addView(actions)
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(action("General MIDI Mapping") { drumKitConfigController.useGeneralMidi() }, buttonParams())
+        })
     }
 
     private fun renderDrumKitConfig(state: DrumKitConfigState) {
         if (!::drumKitLayoutView.isInitialized) return
         val profile = state.active
         drumKitConfigProfile.text = "Configure Drum Kit — ${profile.name}"
-        drumKitConfigStatus.text = "${state.deviceStatus} • ${profile.availableTargets().size} pads mapped" +
+        drumKitConfigStatus.text = "${state.deviceStatus} • ${profile.availableTargets().size} pads mapped • drag to move, pinch to resize" +
             (state.learningTarget?.let { " • Hit ${it.label}" } ?: "")
         drumKitLayoutView.selectedTarget = state.learningTarget
         drumKitLayoutView.submit(profile.layout, profile.availableTargets().toSet())
