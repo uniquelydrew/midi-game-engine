@@ -1066,9 +1066,13 @@ class MainActivity : AppCompatActivity() {
         fun action(label: String, click: () -> Unit) = Button(this@MainActivity).apply { text = label; setOnClickListener { click() } }
         actions.addView(action("Profiles") { showDrumProfileDialog() }, buttonParams())
         actions.addView(action("Add / Remove") { showDrumPieceDialog() }, buttonParams())
-        actions.addView(action("General MIDI") { drumKitConfigController.useGeneralMidi() }, buttonParams())
+        actions.addView(action("Reset Layout") { drumKitConfigController.resetVisualLayout() }, buttonParams())
         actions.addView(action("Drums") { switchMode(GameMode.DRUMS_HUB) }, buttonParams())
         addView(actions)
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(action("General MIDI Mapping") { drumKitConfigController.useGeneralMidi() }, buttonParams())
+        })
     }
 
     private fun renderDrumKitConfig(state: DrumKitConfigState) {

@@ -4,6 +4,7 @@ import android.content.Context
 import android.midi.AndroidMidiInputReal
 import core.drums.DrumKitProfile
 import core.drums.DrumKitLayoutPiece
+import core.drums.DrumKitLayouts
 import core.drums.DrumKitProfiles
 import core.drums.DrumTarget
 import core.drums.DrumTrigger
@@ -49,6 +50,7 @@ class DrumKitConfigController(private val context: Context, private val onChange
     fun rename(name: String) { val old = library.active; val profiles = library.profiles.filterNot { it.name == old.name } + old.copy(name = name); save(DrumKitProfileLibrary(name, profiles)) }
     fun deleteActive() { if (library.profiles.size <= 1) return; val remaining = library.profiles.filterNot { it.name == library.activeName }; save(DrumKitProfileLibrary(remaining.first().name, remaining)) }
     fun useGeneralMidi() { updateActive { DrumKitProfiles.generalMidi(it.name).copy(layout = it.layout) } }
+    fun resetVisualLayout() = updateActive { it.copy(layout = DrumKitLayouts.standard()) }
     fun setVisible(target: DrumTarget, visible: Boolean) = updateActive { p -> p.copy(layout = p.layout.map { if (it.target == target) it.copy(visible = visible) else it }) }
     fun move(target: DrumTarget, x: Float, y: Float) = updateActive { p -> p.copy(layout = p.layout.map { if (it.target == target) it.copy(xFraction = x.coerceIn(0f, 1f), yFraction = y.coerceIn(0f, 1f)) else it }) }
     fun resize(target: DrumTarget, scale: Float) = updateActive { p -> p.copy(layout = p.layout.map { if (it.target == target) it.copy(scale = scale.coerceIn(DrumKitLayoutPiece.MIN_SCALE, DrumKitLayoutPiece.MAX_SCALE)) else it }) }
